@@ -1,0 +1,78 @@
+# Generic Small Fixed-Wing UAS Configuration
+# Based on typical 25kg class surveillance UAV
+
+name: "Generic UAS"
+
+# Reference dimensions
+wing_span: 3.0      # m
+wing_area: 0.8      # m²
+mean_chord: 0.27    # m
+
+# Control limits (rad)
+max_elevator: 0.44  # ~25°
+max_aileron: 0.44
+max_rudder: 0.44
+
+# Performance limits
+max_airspeed: 50.0  # m/s
+min_airspeed: 12.0  # m/s
+
+# Mass properties
+mass_properties:
+  mass: 25.0        # kg
+  Ixx: 1.0          # kg·m² (roll)
+  Iyy: 2.0          # kg·m² (pitch)
+  Izz: 2.5          # kg·m² (yaw)
+  Ixz: 0.1          # kg·m² (product of inertia)
+
+# Aerodynamics - coefficient derivatives
+aerodynamics:
+  # Lift
+  CL0: 0.1          # Zero-alpha lift
+  CLa: 5.0          # Lift curve slope (per rad)
+  CLq: 5.0          # Lift due to pitch rate
+  CLde: 0.5         # Lift due to elevator
+  
+  # Stall model
+  alpha_stall: 0.26 # ~15° stall angle
+  CL_max: 1.4       # Maximum lift coefficient
+  CL_stall_drop: 0.3
+  
+  # Drag (parabolic polar: CD = CD0 + k*CL²)
+  CD0: 0.03         # Parasitic drag
+  CD_k: 0.04        # Induced drag factor
+  CDa: 0.1          # Additional alpha effect
+  CDb: 0.2          # Sideslip drag
+  
+  # Side force
+  CYb: -0.5         # Side force due to sideslip
+  CYdr: 0.2         # Side force due to rudder
+  CYp: 0.0
+  CYr: 0.3
+  
+  # Rolling moment
+  Clb: -0.1         # Dihedral effect
+  Clp: -0.5         # Roll damping
+  Clr: 0.1          # Roll due to yaw rate
+  Clda: 0.15        # Aileron effectiveness
+  Cldr: 0.01        # Roll due to rudder
+  
+  # Pitching moment
+  Cm0: 0.05         # Zero-alpha moment
+  Cma: -0.8         # Pitch stiffness (negative = stable)
+  Cmq: -15.0        # Pitch damping
+  Cmde: -1.2        # Elevator effectiveness
+  
+  # Yawing moment
+  Cnb: 0.1          # Weathercock stability
+  Cnp: -0.03        # Yaw due to roll rate
+  Cnr: -0.2         # Yaw damping
+  Cnda: 0.01        # Adverse yaw
+  Cndr: -0.1        # Rudder effectiveness
+
+# Propulsion
+propulsion:
+  max_thrust: 100.0           # N (at sea level, static)
+  thrust_velocity_factor: 0.01  # Thrust reduction with airspeed
+  propeller_torque_factor: 0.02  # Propeller torque reaction
+

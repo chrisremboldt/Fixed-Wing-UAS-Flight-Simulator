@@ -1,0 +1,66 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+ENV/
+*.egg-info/
+dist/
+build/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Jupyter
+.ipynb_checkpoints/
+*.ipynb
+
+# Results and data outputs
+results/
+test_results/
+test_validation_results/
+validation_results/
+*.png
+*.jpg
+*.gif
+!docs/images/*.png
+
+# Downloaded data (users should download their own)
+data/airfoiltools/*.csv
+data/uiuc/*.dat
+data/uiuc/*.csv
+
+# Keep data directories but not contents
+!data/airfoiltools/.gitkeep
+!data/uiuc/.gitkeep
+
+# Temporary files
+*.tmp
+*.log
+*.cache
+
+# Example outputs
+examples/validation_output/
+examples/*.png
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Coverage
+.coverage
+htmlcov/
+.pytest_cache/
+
+# MyPy
+.mypy_cache/
+.dmypy.json
+dmypy.json

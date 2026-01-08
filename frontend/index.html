@@ -1,0 +1,1103 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>UAS Flight Simulator</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600&family=Oxanium:wght@400;500;600&display=swap');
+        
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        :root {
+            --bg-dark: #0a0e14;
+            --bg-panel: rgba(10, 14, 20, 0.85);
+            --accent-cyan: #00d4ff;
+            --accent-orange: #ff6b35;
+            --accent-green: #39ff14;
+            --text-primary: #e8ecf0;
+            --text-dim: #6b7785;
+            --border-subtle: rgba(0, 212, 255, 0.15);
+            --glow-cyan: 0 0 20px rgba(0, 212, 255, 0.3);
+        }
+        
+        body {
+            font-family: 'JetBrains Mono', monospace;
+            background: var(--bg-dark);
+            color: var(--text-primary);
+            overflow: hidden;
+            height: 100vh;
+        }
+        
+        #canvas-container {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+        }
+        
+        /* HUD Overlay */
+        .hud-panel {
+            position: absolute;
+            background: var(--bg-panel);
+            border: 1px solid var(--border-subtle);
+            backdrop-filter: blur(10px);
+            padding: 16px 20px;
+            font-size: 12px;
+        }
+        
+        .hud-panel h3 {
+            font-family: 'Oxanium', sans-serif;
+            font-weight: 500;
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            color: var(--accent-cyan);
+            margin-bottom: 12px;
+            padding-bottom: 8px;
+            border-bottom: 1px solid var(--border-subtle);
+        }
+        
+        /* Primary Flight Display - Top Left */
+        #pfd {
+            top: 20px;
+            left: 20px;
+            min-width: 200px;
+        }
+        
+        .pfd-row {
+            display: flex;
+            justify-content: space-between;
+            margin: 6px 0;
+        }
+        
+        .pfd-label {
+            color: var(--text-dim);
+        }
+        
+        .pfd-value {
+            font-weight: 500;
+            font-variant-numeric: tabular-nums;
+        }
+        
+        .pfd-value.positive { color: var(--accent-green); }
+        .pfd-value.negative { color: var(--accent-orange); }
+        .pfd-value.warning { color: #ffcc00; }
+        .pfd-value.critical { color: #ff3366; animation: pulse 0.5s infinite; }
+        
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+        
+        @keyframes flash-warning {
+            0%, 100% { background: rgba(255, 204, 0, 0.1); }
+            50% { background: rgba(255, 204, 0, 0.3); }
+        }
+        
+        @keyframes flash-critical {
+            0%, 100% { background: rgba(255, 51, 102, 0.1); }
+            50% { background: rgba(255, 51, 102, 0.4); }
+        }
+        
+        /* Warning/Crash Overlays */
+        #warning-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            pointer-events: none;
+            z-index: 100;
+        }
+        
+        #warning-overlay.stall-warning {
+            animation: flash-warning 0.5s infinite;
+            border: 4px solid #ffcc00;
+        }
+        
+        #warning-overlay.terrain-warning {
+            animation: flash-warning 0.3s infinite;
+            border: 4px solid #ff6600;
+        }
+        
+        #warning-overlay.overspeed-warning {
+            animation: flash-warning 0.4s infinite;
+            border: 4px solid #ff3366;
+        }
+        
+        #warning-overlay.crashed {
+            animation: flash-critical 0.2s infinite;
+            border: 8px solid #ff3366;
+        }
+        
+        #warning-banner {
+            position: absolute;
+            top: 220px;
+            left: 50%;
+            transform: translateX(-50%);
+            padding: 12px 30px;
+            font-family: 'Oxanium', sans-serif;
+            font-size: 18px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 3px;
+            border-radius: 4px;
+            display: none;
+            z-index: 101;
+        }
+        
+        #warning-banner.stall {
+            display: block;
+            background: rgba(255, 204, 0, 0.9);
+            color: #000;
+            animation: pulse 0.5s infinite;
+        }
+        
+        #warning-banner.terrain {
+            display: block;
+            background: rgba(255, 102, 0, 0.9);
+            color: #fff;
+            animation: pulse 0.3s infinite;
+        }
+        
+        #warning-banner.overspeed {
+            display: block;
+            background: rgba(255, 51, 102, 0.9);
+            color: #fff;
+            animation: pulse 0.4s infinite;
+        }
+        
+        #crash-screen {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.8);
+            display: none;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 200;
+        }
+        
+        #crash-screen.visible {
+            display: flex;
+        }
+        
+        #crash-screen h1 {
+            font-family: 'Oxanium', sans-serif;
+            font-size: 72px;
+            color: #ff3366;
+            text-transform: uppercase;
+            letter-spacing: 10px;
+            margin-bottom: 20px;
+            text-shadow: 0 0 30px rgba(255, 51, 102, 0.8);
+        }
+        
+        #crash-screen .crash-type {
+            font-size: 24px;
+            color: #ff6b35;
+            margin-bottom: 10px;
+        }
+        
+        #crash-screen .crash-message {
+            font-size: 16px;
+            color: var(--text-dim);
+            margin-bottom: 40px;
+        }
+        
+        #crash-screen .restart-hint {
+            font-size: 14px;
+            color: var(--accent-cyan);
+        }
+        
+        #crash-screen .restart-hint kbd {
+            background: rgba(0, 212, 255, 0.2);
+            border: 1px solid var(--accent-cyan);
+            padding: 4px 12px;
+            border-radius: 4px;
+        }
+        
+        /* G-Force indicator */
+        #g-force {
+            position: absolute;
+            top: 220px;
+            right: 20px;
+            min-width: 80px;
+            text-align: center;
+        }
+        
+        #g-force .g-value {
+            font-family: 'Oxanium', sans-serif;
+            font-size: 32px;
+            font-weight: 600;
+        }
+        
+        #g-force .g-label {
+            font-size: 10px;
+            color: var(--text-dim);
+        }
+        
+        #g-force.warning .g-value { color: #ffcc00; }
+        #g-force.critical .g-value { color: #ff3366; animation: pulse 0.3s infinite; }
+        
+        /* Attitude Indicator - Top Center */
+        #attitude {
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 180px;
+            height: 180px;
+            padding: 0;
+            border-radius: 50%;
+            overflow: hidden;
+            border: 2px solid var(--accent-cyan);
+            box-shadow: var(--glow-cyan);
+        }
+        
+        #attitude-canvas {
+            width: 100%;
+            height: 100%;
+        }
+        
+        /* Forces Display - Top Right */
+        #forces {
+            top: 20px;
+            right: 20px;
+            min-width: 180px;
+        }
+        
+        .force-bar {
+            height: 4px;
+            background: var(--border-subtle);
+            margin: 4px 0 8px;
+            border-radius: 2px;
+            overflow: hidden;
+        }
+        
+        .force-bar-fill {
+            height: 100%;
+            border-radius: 2px;
+            transition: width 0.1s ease;
+        }
+        
+        .force-bar-fill.aero { background: var(--accent-cyan); }
+        .force-bar-fill.thrust { background: var(--accent-orange); }
+        .force-bar-fill.gravity { background: #8b5cf6; }
+        
+        /* Control Display - Bottom Left */
+        #controls {
+            bottom: 20px;
+            left: 20px;
+            min-width: 200px;
+        }
+        
+        .control-row {
+            display: flex;
+            align-items: center;
+            margin: 8px 0;
+        }
+        
+        .control-label {
+            width: 70px;
+            color: var(--text-dim);
+            font-size: 11px;
+        }
+        
+        .control-bar {
+            flex: 1;
+            height: 8px;
+            background: rgba(255,255,255,0.1);
+            border-radius: 4px;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .control-bar-center {
+            position: absolute;
+            left: 50%;
+            top: 0;
+            bottom: 0;
+            width: 1px;
+            background: var(--text-dim);
+        }
+        
+        .control-bar-fill {
+            position: absolute;
+            top: 0;
+            bottom: 0;
+            background: var(--accent-cyan);
+            border-radius: 4px;
+            transition: left 0.05s, width 0.05s;
+        }
+        
+        .control-bar-fill.throttle {
+            left: 0;
+            background: var(--accent-orange);
+        }
+        
+        /* Status Bar - Bottom Center */
+        #status {
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 30px;
+            padding: 12px 24px;
+        }
+        
+        .status-item {
+            text-align: center;
+        }
+        
+        .status-value {
+            font-family: 'Oxanium', sans-serif;
+            font-size: 24px;
+            font-weight: 600;
+            color: var(--accent-cyan);
+        }
+        
+        .status-unit {
+            font-size: 10px;
+            color: var(--text-dim);
+            margin-top: 2px;
+        }
+        
+        /* Connection Status */
+        #connection {
+            position: absolute;
+            bottom: 20px;
+            right: 20px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 11px;
+        }
+        
+        .connection-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #ff3366;
+        }
+        
+        .connection-dot.connected {
+            background: var(--accent-green);
+            box-shadow: 0 0 10px var(--accent-green);
+        }
+        
+        /* Instructions overlay */
+        #instructions {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+            opacity: 0.7;
+            pointer-events: none;
+        }
+        
+        #instructions h2 {
+            font-family: 'Oxanium', sans-serif;
+            font-size: 18px;
+            margin-bottom: 12px;
+            color: var(--accent-cyan);
+        }
+        
+        #instructions p {
+            font-size: 12px;
+            color: var(--text-dim);
+            line-height: 1.8;
+        }
+        
+        kbd {
+            background: rgba(255,255,255,0.1);
+            border: 1px solid var(--border-subtle);
+            border-radius: 4px;
+            padding: 2px 8px;
+            font-family: inherit;
+        }
+    </style>
+</head>
+<body>
+    <div id="canvas-container"></div>
+    
+    <!-- Warning Overlay -->
+    <div id="warning-overlay"></div>
+    
+    <!-- Warning Banner -->
+    <div id="warning-banner"></div>
+    
+    <!-- Crash Screen -->
+    <div id="crash-screen">
+        <h1>Crashed</h1>
+        <div class="crash-type" id="crash-type"></div>
+        <div class="crash-message" id="crash-message"></div>
+        <div class="restart-hint">Press <kbd>R</kbd> to restart</div>
+    </div>
+    
+    <!-- G-Force Display -->
+    <div class="hud-panel" id="g-force">
+        <div class="g-value" id="g-value">1.0</div>
+        <div class="g-label">G-FORCE</div>
+    </div>
+    
+    <!-- Primary Flight Display -->
+    <div class="hud-panel" id="pfd">
+        <h3>Flight Data</h3>
+        <div class="pfd-row">
+            <span class="pfd-label">Airspeed</span>
+            <span class="pfd-value" id="airspeed">0.0 m/s</span>
+        </div>
+        <div class="pfd-row">
+            <span class="pfd-label">Altitude</span>
+            <span class="pfd-value" id="altitude">0.0 m</span>
+        </div>
+        <div class="pfd-row">
+            <span class="pfd-label">Climb Rate</span>
+            <span class="pfd-value" id="climb-rate">0.0 m/s</span>
+        </div>
+        <div class="pfd-row">
+            <span class="pfd-label">Heading</span>
+            <span class="pfd-value" id="heading">000°</span>
+        </div>
+        <div class="pfd-row">
+            <span class="pfd-label">Alpha</span>
+            <span class="pfd-value" id="alpha">0.0°</span>
+        </div>
+        <div class="pfd-row">
+            <span class="pfd-label">Beta</span>
+            <span class="pfd-value" id="beta">0.0°</span>
+        </div>
+    </div>
+    
+    <!-- Attitude Indicator -->
+    <div class="hud-panel" id="attitude">
+        <canvas id="attitude-canvas" width="180" height="180"></canvas>
+    </div>
+    
+    <!-- Forces Display -->
+    <div class="hud-panel" id="forces">
+        <h3>Forces</h3>
+        <div class="pfd-label">Aerodynamic</div>
+        <div class="force-bar"><div class="force-bar-fill aero" id="force-aero"></div></div>
+        <div class="pfd-label">Thrust</div>
+        <div class="force-bar"><div class="force-bar-fill thrust" id="force-thrust"></div></div>
+        <div class="pfd-label">Weight</div>
+        <div class="force-bar"><div class="force-bar-fill gravity" id="force-gravity"></div></div>
+    </div>
+    
+    <!-- Control Display -->
+    <div class="hud-panel" id="controls">
+        <h3>Controls</h3>
+        <div class="control-row">
+            <span class="control-label">Elevator</span>
+            <div class="control-bar">
+                <div class="control-bar-center"></div>
+                <div class="control-bar-fill" id="ctrl-elevator"></div>
+            </div>
+        </div>
+        <div class="control-row">
+            <span class="control-label">Aileron</span>
+            <div class="control-bar">
+                <div class="control-bar-center"></div>
+                <div class="control-bar-fill" id="ctrl-aileron"></div>
+            </div>
+        </div>
+        <div class="control-row">
+            <span class="control-label">Rudder</span>
+            <div class="control-bar">
+                <div class="control-bar-center"></div>
+                <div class="control-bar-fill" id="ctrl-rudder"></div>
+            </div>
+        </div>
+        <div class="control-row">
+            <span class="control-label">Throttle</span>
+            <div class="control-bar">
+                <div class="control-bar-fill throttle" id="ctrl-throttle"></div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Status Bar -->
+    <div class="hud-panel" id="status">
+        <div class="status-item">
+            <div class="status-value" id="time">0.0</div>
+            <div class="status-unit">TIME (s)</div>
+        </div>
+        <div class="status-item">
+            <div class="status-value" id="fps">60</div>
+            <div class="status-unit">FPS</div>
+        </div>
+    </div>
+    
+    <!-- Connection Status -->
+    <div id="connection">
+        <div class="connection-dot" id="connection-dot"></div>
+        <span id="connection-text">Disconnected</span>
+    </div>
+    
+    <!-- Instructions (shown when disconnected) -->
+    <div id="instructions">
+        <h2>UAS Flight Simulator</h2>
+        <p>
+            Waiting for WebSocket connection...<br><br>
+            <kbd>W</kbd>/<kbd>S</kbd> Pitch down/up<br>
+            <kbd>A</kbd>/<kbd>D</kbd> Roll left/right<br>
+            <kbd>Q</kbd>/<kbd>E</kbd> Yaw left/right<br>
+            <kbd>↑</kbd>/<kbd>↓</kbd> Throttle<br>
+            <kbd>R</kbd> Reset simulation
+        </p>
+    </div>
+
+    <script type="importmap">
+    {
+        "imports": {
+            "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+            "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+        }
+    }
+    </script>
+    
+    <script type="module">
+        import * as THREE from 'three';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+        
+        // === Scene Setup ===
+        const container = document.getElementById('canvas-container');
+        const scene = new THREE.Scene();
+        
+        // Sky gradient background
+        const canvas = document.createElement('canvas');
+        canvas.width = 2;
+        canvas.height = 256;
+        const ctx = canvas.getContext('2d');
+        const gradient = ctx.createLinearGradient(0, 0, 0, 256);
+        gradient.addColorStop(0, '#0a1628');
+        gradient.addColorStop(0.3, '#1a2a4a');
+        gradient.addColorStop(0.6, '#2a3a5a');
+        gradient.addColorStop(1, '#1a2a3a');
+        ctx.fillStyle = gradient;
+        ctx.fillRect(0, 0, 2, 256);
+        const bgTexture = new THREE.CanvasTexture(canvas);
+        scene.background = bgTexture;
+        
+        // Camera
+        const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 50000);
+        camera.position.set(-30, 15, 30);
+        
+        // Renderer
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        renderer.shadowMap.enabled = true;
+        renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+        container.appendChild(renderer.domElement);
+        
+        // Controls
+        const controls = new OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+        controls.dampingFactor = 0.05;
+        controls.maxDistance = 500;
+        
+        // === Lighting ===
+        const ambientLight = new THREE.AmbientLight(0x404060, 0.5);
+        scene.add(ambientLight);
+        
+        const sunLight = new THREE.DirectionalLight(0xffffcc, 1.5);
+        sunLight.position.set(100, 200, 100);
+        sunLight.castShadow = true;
+        sunLight.shadow.mapSize.width = 2048;
+        sunLight.shadow.mapSize.height = 2048;
+        sunLight.shadow.camera.near = 10;
+        sunLight.shadow.camera.far = 500;
+        sunLight.shadow.camera.left = -100;
+        sunLight.shadow.camera.right = 100;
+        sunLight.shadow.camera.top = 100;
+        sunLight.shadow.camera.bottom = -100;
+        scene.add(sunLight);
+        
+        // === Ground ===
+        const groundGeometry = new THREE.PlaneGeometry(10000, 10000, 100, 100);
+        const groundMaterial = new THREE.MeshStandardMaterial({
+            color: 0x1a3a2a,
+            roughness: 0.9,
+            metalness: 0.1
+        });
+        const ground = new THREE.Mesh(groundGeometry, groundMaterial);
+        ground.rotation.x = -Math.PI / 2;
+        ground.receiveShadow = true;
+        scene.add(ground);
+        
+        // Grid helper
+        const gridHelper = new THREE.GridHelper(1000, 100, 0x00d4ff, 0x004455);
+        gridHelper.material.opacity = 0.3;
+        gridHelper.material.transparent = true;
+        scene.add(gridHelper);
+        
+        // === Aircraft Model ===
+        function createAircraft() {
+            const group = new THREE.Group();
+            
+            // Fuselage
+            const fuselageGeometry = new THREE.CylinderGeometry(0.15, 0.1, 2, 16);
+            const fuselageMaterial = new THREE.MeshStandardMaterial({
+                color: 0x2a3a4a,
+                roughness: 0.3,
+                metalness: 0.7
+            });
+            const fuselage = new THREE.Mesh(fuselageGeometry, fuselageMaterial);
+            fuselage.rotation.z = Math.PI / 2;
+            fuselage.castShadow = true;
+            group.add(fuselage);
+            
+            // Nose
+            const noseGeometry = new THREE.ConeGeometry(0.15, 0.5, 16);
+            const noseMaterial = new THREE.MeshStandardMaterial({
+                color: 0x00d4ff,
+                roughness: 0.2,
+                metalness: 0.8,
+                emissive: 0x00d4ff,
+                emissiveIntensity: 0.2
+            });
+            const nose = new THREE.Mesh(noseGeometry, noseMaterial);
+            nose.rotation.z = -Math.PI / 2;
+            nose.position.x = 1.25;
+            nose.castShadow = true;
+            group.add(nose);
+            
+            // Wings
+            const wingGeometry = new THREE.BoxGeometry(0.3, 0.02, 3);
+            const wingMaterial = new THREE.MeshStandardMaterial({
+                color: 0x3a4a5a,
+                roughness: 0.4,
+                metalness: 0.6
+            });
+            const wing = new THREE.Mesh(wingGeometry, wingMaterial);
+            wing.position.x = 0.2;
+            wing.castShadow = true;
+            group.add(wing);
+            
+            // Horizontal stabilizer
+            const hStabGeometry = new THREE.BoxGeometry(0.15, 0.01, 0.8);
+            const hStab = new THREE.Mesh(hStabGeometry, wingMaterial);
+            hStab.position.x = -0.9;
+            hStab.castShadow = true;
+            group.add(hStab);
+            
+            // Vertical stabilizer
+            const vStabGeometry = new THREE.BoxGeometry(0.2, 0.4, 0.01);
+            const vStab = new THREE.Mesh(vStabGeometry, wingMaterial);
+            vStab.position.set(-0.85, 0.2, 0);
+            vStab.castShadow = true;
+            group.add(vStab);
+            
+            // Wing tip lights
+            const tipGeometry = new THREE.SphereGeometry(0.03, 8, 8);
+            const leftTipMaterial = new THREE.MeshBasicMaterial({ color: 0xff0000 });
+            const rightTipMaterial = new THREE.MeshBasicMaterial({ color: 0x00ff00 });
+            
+            const leftTip = new THREE.Mesh(tipGeometry, leftTipMaterial);
+            leftTip.position.set(0.2, 0, -1.5);
+            group.add(leftTip);
+            
+            const rightTip = new THREE.Mesh(tipGeometry, rightTipMaterial);
+            rightTip.position.set(0.2, 0, 1.5);
+            group.add(rightTip);
+            
+            // Scale up
+            group.scale.set(2, 2, 2);
+            
+            return group;
+        }
+        
+        const aircraft = createAircraft();
+        aircraft.position.y = 100;
+        scene.add(aircraft);
+        
+        // Trail
+        const trailGeometry = new THREE.BufferGeometry();
+        const trailPositions = new Float32Array(1000 * 3);
+        trailGeometry.setAttribute('position', new THREE.BufferAttribute(trailPositions, 3));
+        const trailMaterial = new THREE.LineBasicMaterial({ 
+            color: 0x00d4ff, 
+            transparent: true, 
+            opacity: 0.5 
+        });
+        const trail = new THREE.Line(trailGeometry, trailMaterial);
+        scene.add(trail);
+        let trailIndex = 0;
+        
+        // === Attitude Indicator ===
+        const attitudeCanvas = document.getElementById('attitude-canvas');
+        const attitudeCtx = attitudeCanvas.getContext('2d');
+        
+        function drawAttitudeIndicator(roll, pitch) {
+            const w = attitudeCanvas.width;
+            const h = attitudeCanvas.height;
+            const cx = w / 2;
+            const cy = h / 2;
+            
+            attitudeCtx.clearRect(0, 0, w, h);
+            
+            // Save context for rotation
+            attitudeCtx.save();
+            attitudeCtx.translate(cx, cy);
+            attitudeCtx.rotate(-roll);
+            
+            // Sky/ground split with pitch offset
+            const pitchOffset = pitch * 3; // Scale pitch for visibility
+            
+            // Sky (blue)
+            attitudeCtx.fillStyle = '#1a3a5a';
+            attitudeCtx.fillRect(-w, -w + pitchOffset, w * 2, w);
+            
+            // Ground (brown)
+            attitudeCtx.fillStyle = '#3a2a1a';
+            attitudeCtx.fillRect(-w, pitchOffset, w * 2, w);
+            
+            // Horizon line
+            attitudeCtx.strokeStyle = '#ffffff';
+            attitudeCtx.lineWidth = 2;
+            attitudeCtx.beginPath();
+            attitudeCtx.moveTo(-w, pitchOffset);
+            attitudeCtx.lineTo(w, pitchOffset);
+            attitudeCtx.stroke();
+            
+            // Pitch ladder
+            attitudeCtx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
+            attitudeCtx.lineWidth = 1;
+            attitudeCtx.font = '10px JetBrains Mono';
+            attitudeCtx.fillStyle = '#ffffff';
+            
+            for (let p = -30; p <= 30; p += 10) {
+                if (p === 0) continue;
+                const y = pitchOffset - p * 3;
+                const halfWidth = p > 0 ? 25 : 15;
+                attitudeCtx.beginPath();
+                attitudeCtx.moveTo(-halfWidth, y);
+                attitudeCtx.lineTo(halfWidth, y);
+                attitudeCtx.stroke();
+                attitudeCtx.fillText(`${Math.abs(p)}`, halfWidth + 5, y + 3);
+            }
+            
+            attitudeCtx.restore();
+            
+            // Fixed aircraft symbol
+            attitudeCtx.strokeStyle = '#ff6b35';
+            attitudeCtx.lineWidth = 3;
+            attitudeCtx.beginPath();
+            attitudeCtx.moveTo(cx - 40, cy);
+            attitudeCtx.lineTo(cx - 15, cy);
+            attitudeCtx.moveTo(cx + 15, cy);
+            attitudeCtx.lineTo(cx + 40, cy);
+            attitudeCtx.moveTo(cx, cy - 15);
+            attitudeCtx.lineTo(cx, cy);
+            attitudeCtx.stroke();
+            
+            // Center dot
+            attitudeCtx.fillStyle = '#ff6b35';
+            attitudeCtx.beginPath();
+            attitudeCtx.arc(cx, cy, 4, 0, Math.PI * 2);
+            attitudeCtx.fill();
+        }
+        
+        // === WebSocket Connection ===
+        let ws = null;
+        let connected = false;
+        let lastState = null;
+        
+        // Control state
+        const controlState = {
+            elevator: 0,
+            aileron: 0,
+            rudder: 0,
+            throttle: 0.5
+        };
+        
+        function connect() {
+            ws = new WebSocket('ws://localhost:8765');
+            
+            ws.onopen = () => {
+                connected = true;
+                document.getElementById('connection-dot').classList.add('connected');
+                document.getElementById('connection-text').textContent = 'Connected';
+                document.getElementById('instructions').style.display = 'none';
+            };
+            
+            ws.onclose = () => {
+                connected = false;
+                document.getElementById('connection-dot').classList.remove('connected');
+                document.getElementById('connection-text').textContent = 'Disconnected';
+                document.getElementById('instructions').style.display = 'block';
+                setTimeout(connect, 2000);
+            };
+            
+            ws.onerror = () => {
+                ws.close();
+            };
+            
+            ws.onmessage = (event) => {
+                try {
+                    const data = JSON.parse(event.data);
+                    if (data.type === 'state') {
+                        lastState = data;
+                        updateFromState(data);
+                    }
+                } catch (e) {
+                    console.error('Failed to parse message:', e);
+                }
+            };
+        }
+        
+        function updateFromState(state) {
+            // Update aircraft position and rotation
+            aircraft.position.set(
+                state.position.x,
+                state.position.y,
+                state.position.z
+            );
+            
+            aircraft.quaternion.set(
+                state.quaternion.x,
+                state.quaternion.y,
+                state.quaternion.z,
+                state.quaternion.w
+            );
+            
+            // Update camera to follow aircraft
+            const offset = new THREE.Vector3(-20, 10, 20);
+            offset.applyQuaternion(aircraft.quaternion);
+            controls.target.copy(aircraft.position);
+            
+            // Update trail
+            const positions = trail.geometry.attributes.position.array;
+            positions[trailIndex * 3] = aircraft.position.x;
+            positions[trailIndex * 3 + 1] = aircraft.position.y;
+            positions[trailIndex * 3 + 2] = aircraft.position.z;
+            trailIndex = (trailIndex + 1) % 333;
+            trail.geometry.attributes.position.needsUpdate = true;
+            trail.geometry.setDrawRange(0, Math.min(trailIndex + 1, 333));
+            
+            // Update HUD
+            const airspeed = state.aero?.airspeed || 0;
+            document.getElementById('airspeed').textContent = `${airspeed.toFixed(1)} m/s`;
+            document.getElementById('altitude').textContent = `${state.altitude.toFixed(1)} m`;
+            
+            const climbRate = state.velocity?.climb_rate || 0;
+            const crEl = document.getElementById('climb-rate');
+            crEl.textContent = `${climbRate >= 0 ? '+' : ''}${climbRate.toFixed(1)} m/s`;
+            crEl.className = 'pfd-value ' + (climbRate > 0.5 ? 'positive' : climbRate < -0.5 ? 'negative' : '');
+            
+            document.getElementById('heading').textContent = `${state.euler.heading.toFixed(0).padStart(3, '0')}°`;
+            document.getElementById('alpha').textContent = `${(state.aero?.alpha || 0).toFixed(1)}°`;
+            document.getElementById('beta').textContent = `${(state.aero?.beta || 0).toFixed(1)}°`;
+            document.getElementById('time').textContent = state.time.toFixed(1);
+            
+            // Attitude indicator
+            drawAttitudeIndicator(
+                state.euler.roll * Math.PI / 180,
+                state.euler.pitch
+            );
+            
+            // Force bars
+            if (state.forces) {
+                const maxForce = 500;
+                const aeroMag = Math.sqrt(state.forces.aero.reduce((a, b) => a + b*b, 0));
+                const thrustMag = Math.sqrt(state.forces.thrust.reduce((a, b) => a + b*b, 0));
+                const gravMag = Math.sqrt(state.forces.gravity.reduce((a, b) => a + b*b, 0));
+                
+                document.getElementById('force-aero').style.width = `${Math.min(100, aeroMag / maxForce * 100)}%`;
+                document.getElementById('force-thrust').style.width = `${Math.min(100, thrustMag / maxForce * 100)}%`;
+                document.getElementById('force-gravity').style.width = `${Math.min(100, gravMag / maxForce * 100)}%`;
+            }
+            
+            // === CRASH DETECTION UI ===
+            const warningOverlay = document.getElementById('warning-overlay');
+            const warningBanner = document.getElementById('warning-banner');
+            const crashScreen = document.getElementById('crash-screen');
+            const gForceEl = document.getElementById('g-force');
+            const gValueEl = document.getElementById('g-value');
+            
+            if (state.crash) {
+                const crash = state.crash;
+                
+                // Update G-force display
+                const gForce = crash.g_force || 1.0;
+                gValueEl.textContent = gForce.toFixed(1);
+                gForceEl.className = 'hud-panel';
+                if (gForce > 4.0 || gForce < -1.0) {
+                    gForceEl.classList.add('critical');
+                } else if (gForce > 3.0 || gForce < 0) {
+                    gForceEl.classList.add('warning');
+                }
+                
+                // Handle crashed state
+                if (crash.crashed) {
+                    warningOverlay.className = 'crashed';
+                    warningBanner.className = '';
+                    warningBanner.style.display = 'none';
+                    crashScreen.classList.add('visible');
+                    
+                    // Update crash screen content
+                    const crashTypeNames = {
+                        'GROUND_COLLISION': 'Ground Impact',
+                        'STRUCTURAL_FAILURE': 'Structural Failure',
+                        'OVERSPEED': 'Overspeed Breakup',
+                        'STALL_SPIN': 'Stall/Spin',
+                        'UNDERSPEED': 'Loss of Control'
+                    };
+                    document.getElementById('crash-type').textContent = crashTypeNames[crash.crash_type] || crash.crash_type;
+                    document.getElementById('crash-message').textContent = crash.crash_message || '';
+                    return; // Don't process warnings if crashed
+                }
+                
+                // Clear crash screen if not crashed
+                crashScreen.classList.remove('visible');
+                
+                // Handle warnings
+                warningOverlay.className = '';
+                warningBanner.className = '';
+                warningBanner.style.display = 'none';
+                
+                if (crash.stall_warning) {
+                    warningOverlay.classList.add('stall-warning');
+                    warningBanner.classList.add('stall');
+                    warningBanner.textContent = '⚠ STALL WARNING';
+                    warningBanner.style.display = 'block';
+                } else if (crash.terrain_warning) {
+                    warningOverlay.classList.add('terrain-warning');
+                    warningBanner.classList.add('terrain');
+                    warningBanner.textContent = '⚠ PULL UP - TERRAIN';
+                    warningBanner.style.display = 'block';
+                } else if (crash.overspeed_warning) {
+                    warningOverlay.classList.add('overspeed-warning');
+                    warningBanner.classList.add('overspeed');
+                    warningBanner.textContent = '⚠ OVERSPEED';
+                    warningBanner.style.display = 'block';
+                }
+            } else {
+                // No crash data, clear everything
+                warningOverlay.className = '';
+                warningBanner.style.display = 'none';
+                crashScreen.classList.remove('visible');
+                gValueEl.textContent = '1.0';
+                gForceEl.className = 'hud-panel';
+            }
+        }
+        
+        // Keyboard controls
+        const keys = {};
+        
+        document.addEventListener('keydown', (e) => {
+            keys[e.key.toLowerCase()] = true;
+            
+            if (e.key.toLowerCase() === 'r' && connected) {
+                ws.send(JSON.stringify({ type: 'command', command: 'reset' }));
+                // Also clear crash screen immediately for responsiveness
+                document.getElementById('crash-screen').classList.remove('visible');
+                document.getElementById('warning-overlay').className = '';
+                document.getElementById('warning-banner').style.display = 'none';
+                // Reset trail
+                trailIndex = 0;
+            }
+        });
+        
+        document.addEventListener('keyup', (e) => {
+            keys[e.key.toLowerCase()] = false;
+        });
+        
+        function updateControls() {
+            const rate = 0.02;
+            const decay = 0.95;
+            
+            // Pitch (W/S)
+            if (keys['w']) controlState.elevator = Math.max(-0.44, controlState.elevator - rate);
+            else if (keys['s']) controlState.elevator = Math.min(0.44, controlState.elevator + rate);
+            else controlState.elevator *= decay;
+            
+            // Roll (A/D)
+            if (keys['a']) controlState.aileron = Math.max(-0.44, controlState.aileron - rate);
+            else if (keys['d']) controlState.aileron = Math.min(0.44, controlState.aileron + rate);
+            else controlState.aileron *= decay;
+            
+            // Yaw (Q/E)
+            if (keys['q']) controlState.rudder = Math.max(-0.44, controlState.rudder - rate);
+            else if (keys['e']) controlState.rudder = Math.min(0.44, controlState.rudder + rate);
+            else controlState.rudder *= decay;
+            
+            // Throttle (Arrow Up/Down)
+            if (keys['arrowup']) controlState.throttle = Math.min(1, controlState.throttle + 0.01);
+            if (keys['arrowdown']) controlState.throttle = Math.max(0, controlState.throttle - 0.01);
+            
+            // Update control bars
+            updateControlBar('ctrl-elevator', controlState.elevator, 0.44);
+            updateControlBar('ctrl-aileron', controlState.aileron, 0.44);
+            updateControlBar('ctrl-rudder', controlState.rudder, 0.44);
+            document.getElementById('ctrl-throttle').style.width = `${controlState.throttle * 100}%`;
+            
+            // Send to server
+            if (connected && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({
+                    type: 'control',
+                    ...controlState
+                }));
+            }
+        }
+        
+        function updateControlBar(id, value, max) {
+            const el = document.getElementById(id);
+            const normalized = value / max;
+            if (normalized >= 0) {
+                el.style.left = '50%';
+                el.style.width = `${normalized * 50}%`;
+            } else {
+                el.style.left = `${50 + normalized * 50}%`;
+                el.style.width = `${-normalized * 50}%`;
+            }
+        }
+        
+        // FPS counter
+        let frameCount = 0;
+        let lastFpsUpdate = performance.now();
+        
+        // Animation loop
+        function animate() {
+            requestAnimationFrame(animate);
+            
+            updateControls();
+            controls.update();
+            renderer.render(scene, camera);
+            
+            // FPS
+            frameCount++;
+            const now = performance.now();
+            if (now - lastFpsUpdate > 1000) {
+                document.getElementById('fps').textContent = frameCount;
+                frameCount = 0;
+                lastFpsUpdate = now;
+            }
+        }
+        
+        // Handle resize
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+        
+        // Initialize
+        drawAttitudeIndicator(0, 0);
+        connect();
+        animate();
+    </script>
+</body>
+</html>
+

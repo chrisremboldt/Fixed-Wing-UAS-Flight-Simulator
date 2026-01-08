@@ -1,0 +1,20 @@
+# Fixed-Wing UAS Flight Simulator
+# Core dependencies
+
+numpy>=1.24.0
+scipy>=1.10.0
+pandas>=2.0.0
+pyyaml>=6.0
+websockets>=11.0
+asyncio-mqtt>=0.16.0
+
+# Visualization & debugging
+matplotlib>=3.7.0
+
+# For DAA model integration
+torch>=2.0.0
+
+# Testing
+pytest>=7.0.0
+pytest-asyncio>=0.21.0
+
