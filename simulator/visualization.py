@@ -48,6 +48,51 @@ def state_to_message(state: AircraftState, forces_moments=None, crash_state=None
     """
     phi, theta, psi = state.euler_angles
     
+    # Get rotation matrix from NED body frame quaternion
+    R_body_to_ned = state.quaternion.to_dcm()
+    
+    # Transform rotation matrix to Three.js world coordinates
+    # NED: X=North, Y=East, Z=Down
+    # Three.js: X=East, Y=Up, Z=North
+    # Transformation matrix: [E, -D, N] = [0 1 0; 0 0 -1; 1 0 0] * [N, E, D]
+    P = np.array([
+        [0, 1, 0],   # Three.js X = NED Y (East)
+        [0, 0, -1],  # Three.js Y = -NED Z (Up)
+        [1, 0, 0]    # Three.js Z = NED X (North)
+    ])
+    
+    # Transform the rotation matrix: R_threejs = P * R_ned * P^T
+    R_body_to_threejs = P @ R_body_to_ned @ P.T
+    
+    # Convert rotation matrix back to quaternion
+    # Using Shepperd's method for numerical stability
+    trace = np.trace(R_body_to_threejs)
+    
+    if trace > 0:
+        s = 0.5 / np.sqrt(trace + 1.0)
+        qw = 0.25 / s
+        qx = (R_body_to_threejs[2, 1] - R_body_to_threejs[1, 2]) * s
+        qy = (R_body_to_threejs[0, 2] - R_body_to_threejs[2, 0]) * s
+        qz = (R_body_to_threejs[1, 0] - R_body_to_threejs[0, 1]) * s
+    elif R_body_to_threejs[0, 0] > R_body_to_threejs[1, 1] and R_body_to_threejs[0, 0] > R_body_to_threejs[2, 2]:
+        s = 2.0 * np.sqrt(1.0 + R_body_to_threejs[0, 0] - R_body_to_threejs[1, 1] - R_body_to_threejs[2, 2])
+        qw = (R_body_to_threejs[2, 1] - R_body_to_threejs[1, 2]) / s
+        qx = 0.25 * s
+        qy = (R_body_to_threejs[0, 1] + R_body_to_threejs[1, 0]) / s
+        qz = (R_body_to_threejs[0, 2] + R_body_to_threejs[2, 0]) / s
+    elif R_body_to_threejs[1, 1] > R_body_to_threejs[2, 2]:
+        s = 2.0 * np.sqrt(1.0 + R_body_to_threejs[1, 1] - R_body_to_threejs[0, 0] - R_body_to_threejs[2, 2])
+        qw = (R_body_to_threejs[0, 2] - R_body_to_threejs[2, 0]) / s
+        qx = (R_body_to_threejs[0, 1] + R_body_to_threejs[1, 0]) / s
+        qy = 0.25 * s
+        qz = (R_body_to_threejs[1, 2] + R_body_to_threejs[2, 1]) / s
+    else:
+        s = 2.0 * np.sqrt(1.0 + R_body_to_threejs[2, 2] - R_body_to_threejs[0, 0] - R_body_to_threejs[1, 1])
+        qw = (R_body_to_threejs[1, 0] - R_body_to_threejs[0, 1]) / s
+        qx = (R_body_to_threejs[0, 2] + R_body_to_threejs[2, 0]) / s
+        qy = (R_body_to_threejs[1, 2] + R_body_to_threejs[2, 1]) / s
+        qz = 0.25 * s
+    
     data = {
         'type': 'state',
         'time': state.time,
@@ -59,13 +104,12 @@ def state_to_message(state: AircraftState, forces_moments=None, crash_state=None
             'z': state.p_north
         },
         
-        # Quaternion (convert from NED body to Three.js convention)
-        # Three.js uses right-handed Y-up coordinate system
+        # Quaternion in Three.js frame
         'quaternion': {
-            'w': state.quaternion.w,
-            'x': state.quaternion.x,
-            'y': -state.quaternion.z,  # Swap and negate for Y-up
-            'z': state.quaternion.y
+            'w': qw,
+            'x': qx,
+            'y': qy,
+            'z': qz
         },
         
         # Euler angles for HUD (degrees)

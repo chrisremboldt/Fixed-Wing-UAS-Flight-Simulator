@@ -292,6 +292,61 @@
         .force-bar-fill.thrust { background: var(--accent-orange); }
         .force-bar-fill.gravity { background: #8b5cf6; }
         
+        /* Virtual Joystick - Bottom Center */
+        #joystick {
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 150px;
+            height: 150px;
+            border-radius: 50%;
+            background: var(--bg-panel);
+            border: 2px solid var(--border-subtle);
+            position: relative;
+            overflow: hidden;
+            backdrop-filter: blur(10px);
+        }
+
+        #joystick-area {
+            width: 100%;
+            height: 100%;
+            position: relative;
+            cursor: crosshair;
+            background: radial-gradient(circle, rgba(0, 212, 255, 0.1) 0%, transparent 70%);
+        }
+
+        #joystick-handle {
+            position: absolute;
+            width: 20px;
+            height: 20px;
+            background: var(--accent-cyan);
+            border-radius: 50%;
+            border: 2px solid var(--accent-cyan);
+            box-shadow: var(--glow-cyan);
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            transition: transform 0.1s ease;
+            pointer-events: none;
+        }
+
+        #joystick:active #joystick-handle {
+            box-shadow: 0 0 20px var(--accent-cyan);
+        }
+
+        #joystick-label {
+            position: absolute;
+            top: -25px;
+            left: 50%;
+            transform: translateX(-50%);
+            font-family: 'Oxanium', sans-serif;
+            font-size: 11px;
+            font-weight: 500;
+            color: var(--accent-cyan);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
         /* Control Display - Bottom Left */
         #controls {
             bottom: 20px;
@@ -393,6 +448,84 @@
             box-shadow: 0 0 10px var(--accent-green);
         }
         
+        /* Camera Controls */
+        #camera-controls {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            z-index: 10;
+        }
+
+        .camera-mode-btn {
+            background: var(--bg-panel);
+            border: 1px solid var(--border-subtle);
+            color: var(--text-primary);
+            padding: 8px 12px;
+            font-size: 11px;
+            font-family: 'Oxanium', sans-serif;
+            cursor: pointer;
+            border-radius: 4px;
+            transition: all 0.2s ease;
+            min-width: 80px;
+            text-align: center;
+        }
+
+        .camera-mode-btn:hover {
+            background: var(--accent-cyan);
+            color: var(--bg-dark);
+            box-shadow: var(--glow-cyan);
+        }
+
+        .camera-mode-btn.active {
+            background: var(--accent-cyan);
+            color: var(--bg-dark);
+            box-shadow: var(--glow-cyan);
+        }
+
+        .camera-settings {
+            background: var(--bg-panel);
+            border: 1px solid var(--border-subtle);
+            backdrop-filter: blur(10px);
+            padding: 12px;
+            margin-top: 8px;
+            display: none;
+        }
+
+        .camera-settings.show {
+            display: block;
+        }
+
+        .setting-row {
+            display: flex;
+            align-items: center;
+            margin: 6px 0;
+        }
+
+        .setting-label {
+            width: 60px;
+            font-size: 10px;
+            color: var(--text-dim);
+        }
+
+        .setting-input {
+            flex: 1;
+            background: rgba(255,255,255,0.1);
+            border: 1px solid var(--border-subtle);
+            color: var(--text-primary);
+            padding: 4px 8px;
+            border-radius: 3px;
+            font-size: 11px;
+        }
+
+        .setting-input:focus {
+            outline: none;
+            border-color: var(--accent-cyan);
+            box-shadow: 0 0 5px var(--accent-cyan);
+        }
+
         /* Instructions overlay */
         #instructions {
             position: absolute;
@@ -537,7 +670,40 @@
             <div class="status-unit">FPS</div>
         </div>
     </div>
+
+    <!-- Virtual Joystick -->
+    <div class="hud-panel" id="joystick">
+        <div id="joystick-label">Flight Control</div>
+        <div id="joystick-area">
+            <div id="joystick-handle"></div>
+        </div>
+    </div>
     
+    <!-- Camera Controls -->
+    <div id="camera-controls">
+        <button class="camera-mode-btn active" id="camera-follow">Follow</button>
+        <button class="camera-mode-btn" id="camera-cockpit">Cockpit</button>
+        <button class="camera-mode-btn" id="camera-chase">Chase</button>
+        <button class="camera-mode-btn" id="camera-orbit">Orbit</button>
+        <button class="camera-mode-btn" id="camera-free">Free</button>
+        <button class="camera-mode-btn" id="camera-settings-btn">⚙️</button>
+
+        <div class="camera-settings" id="camera-settings">
+            <div class="setting-row">
+                <span class="setting-label">Distance</span>
+                <input type="range" class="setting-input" id="camera-distance" min="5" max="100" value="30" step="1">
+            </div>
+            <div class="setting-row">
+                <span class="setting-label">Height</span>
+                <input type="range" class="setting-input" id="camera-height" min="-50" max="50" value="15" step="1">
+            </div>
+            <div class="setting-row">
+                <span class="setting-label">Smooth</span>
+                <input type="range" class="setting-input" id="camera-smoothing" min="0" max="1" value="0.1" step="0.01">
+            </div>
+        </div>
+    </div>
+
     <!-- Connection Status -->
     <div id="connection">
         <div class="connection-dot" id="connection-dot"></div>
@@ -549,11 +715,19 @@
         <h2>UAS Flight Simulator</h2>
         <p>
             Waiting for WebSocket connection...<br><br>
+            <strong>Keyboard Controls:</strong><br>
             <kbd>W</kbd>/<kbd>S</kbd> Pitch down/up<br>
             <kbd>A</kbd>/<kbd>D</kbd> Roll left/right<br>
             <kbd>Q</kbd>/<kbd>E</kbd> Yaw left/right<br>
             <kbd>↑</kbd>/<kbd>↓</kbd> Throttle<br>
-            <kbd>R</kbd> Reset simulation
+            <kbd>R</kbd> Reset simulation<br><br>
+            <strong>Mouse Joystick:</strong><br>
+            Click and drag the circular control<br>
+            <em>X-axis:</em> Roll (aileron)<br>
+            <em>Y-axis:</em> Pitch (elevator)<br><br>
+            <strong>Camera:</strong><br>
+            <kbd>C</kbd> Cycle camera modes<br>
+            <kbd>V</kbd> Toggle camera settings
         </p>
     </div>
 
@@ -606,6 +780,157 @@
         controls.enableDamping = true;
         controls.dampingFactor = 0.05;
         controls.maxDistance = 500;
+
+        // === Camera Controller ===
+        const CameraMode = {
+            FOLLOW: 'follow',
+            COCKPIT: 'cockpit',
+            CHASE: 'chase',
+            ORBIT: 'orbit',
+            FREE: 'free'
+        };
+
+        class CameraController {
+            constructor(camera, controls, aircraft) {
+                this.camera = camera;
+                this.controls = controls;
+                this.aircraft = aircraft;
+                this.mode = CameraMode.FOLLOW;
+
+                // Camera settings
+                this.distance = 30;
+                this.height = 15;
+                this.sideOffset = 0;
+                this.smoothing = 0.1;
+
+                // Internal state
+                this.targetPosition = new THREE.Vector3();
+                this.targetLookAt = new THREE.Vector3();
+                this.currentPosition = new THREE.Vector3();
+                this.currentLookAt = new THREE.Vector3();
+
+                // Initialize positions
+                this.currentPosition.copy(camera.position);
+                this.currentLookAt.copy(controls.target);
+            }
+
+            setMode(mode) {
+                this.mode = mode;
+
+                // Update UI
+                document.querySelectorAll('.camera-mode-btn').forEach(btn => {
+                    btn.classList.remove('active');
+                });
+                document.getElementById(`camera-${mode}`).classList.add('active');
+
+                // Configure controls based on mode
+                this.configureControls();
+            }
+
+            configureControls() {
+                switch (this.mode) {
+                    case CameraMode.FOLLOW:
+                        this.controls.enabled = false;
+                        break;
+                    case CameraMode.COCKPIT:
+                        this.controls.enabled = false;
+                        break;
+                    case CameraMode.CHASE:
+                        this.controls.enabled = false;
+                        break;
+                    case CameraMode.ORBIT:
+                        this.controls.enabled = true;
+                        this.controls.target.copy(this.aircraft.position);
+                        break;
+                    case CameraMode.FREE:
+                        this.controls.enabled = true;
+                        break;
+                }
+            }
+
+            update() {
+                const aircraftPos = this.aircraft.position.clone();
+                const aircraftQuat = this.aircraft.quaternion.clone();
+
+                switch (this.mode) {
+                    case CameraMode.FOLLOW:
+                        this.updateFollowMode(aircraftPos, aircraftQuat);
+                        break;
+                    case CameraMode.COCKPIT:
+                        this.updateCockpitMode(aircraftPos, aircraftQuat);
+                        break;
+                    case CameraMode.CHASE:
+                        this.updateChaseMode(aircraftPos, aircraftQuat);
+                        break;
+                    case CameraMode.ORBIT:
+                        this.updateOrbitMode(aircraftPos);
+                        break;
+                    case CameraMode.FREE:
+                        // Free mode - controls handle everything
+                        break;
+                }
+
+                // Apply smoothing
+                if (this.mode !== CameraMode.FREE) {
+                    this.currentPosition.lerp(this.targetPosition, this.smoothing);
+                    this.currentLookAt.lerp(this.targetLookAt, this.smoothing);
+
+                    this.camera.position.copy(this.currentPosition);
+                    this.controls.target.copy(this.currentLookAt);
+                }
+            }
+
+            updateFollowMode(aircraftPos, aircraftQuat) {
+                // Position camera behind and above aircraft
+                const offset = new THREE.Vector3(-this.distance, this.height, this.sideOffset);
+                offset.applyQuaternion(aircraftQuat);
+                this.targetPosition.copy(aircraftPos).add(offset);
+
+                // Look at aircraft
+                this.targetLookAt.copy(aircraftPos);
+            }
+
+            updateCockpitMode(aircraftPos, aircraftQuat) {
+                // Position camera inside aircraft (slightly forward)
+                const offset = new THREE.Vector3(0.5, 0.2, 0);
+                offset.applyQuaternion(aircraftQuat);
+                this.targetPosition.copy(aircraftPos).add(offset);
+
+                // Look forward along aircraft's heading
+                const lookOffset = new THREE.Vector3(10, 0, 0);
+                lookOffset.applyQuaternion(aircraftQuat);
+                this.targetLookAt.copy(aircraftPos).add(lookOffset);
+            }
+
+            updateChaseMode(aircraftPos, aircraftQuat) {
+                // Position camera behind aircraft
+                const offset = new THREE.Vector3(-this.distance, this.height * 0.5, 0);
+                offset.applyQuaternion(aircraftQuat);
+                this.targetPosition.copy(aircraftPos).add(offset);
+
+                // Look at aircraft
+                this.targetLookAt.copy(aircraftPos);
+            }
+
+            updateOrbitMode(aircraftPos) {
+                // Keep target on aircraft
+                this.controls.target.copy(aircraftPos);
+            }
+
+            cycleMode() {
+                const modes = Object.values(CameraMode);
+                const currentIndex = modes.indexOf(this.mode);
+                const nextIndex = (currentIndex + 1) % modes.length;
+                this.setMode(modes[nextIndex]);
+            }
+
+            setSettings(distance, height, smoothing) {
+                this.distance = distance;
+                this.height = height;
+                this.smoothing = smoothing;
+            }
+        }
+
         
         // === Lighting ===
         const ambientLight = new THREE.AmbientLight(0x404060, 0.5);
@@ -721,6 +1046,9 @@
         const aircraft = createAircraft();
         aircraft.position.y = 100;
         scene.add(aircraft);
+
+        // Create camera controller
+        const cameraController = new CameraController(camera, controls, aircraft);
         
         // Trail
         const trailGeometry = new THREE.BufferGeometry();
@@ -865,6 +1193,7 @@
                 state.position.z
             );
             
+            // Apply quaternion from server
             aircraft.quaternion.set(
                 state.quaternion.x,
                 state.quaternion.y,
@@ -872,10 +1201,14 @@
                 state.quaternion.w
             );
             
-            // Update camera to follow aircraft
-            const offset = new THREE.Vector3(-20, 10, 20);
-            offset.applyQuaternion(aircraft.quaternion);
-            controls.target.copy(aircraft.position);
+            // Apply model correction: rotate -90° around Y axis so model +X points forward
+            // The model is built to face +X, but we need it to align with the velocity direction
+            const modelCorrection = new THREE.Quaternion();
+            modelCorrection.setFromAxisAngle(new THREE.Vector3(0, 1, 0), -Math.PI / 2);
+            aircraft.quaternion.multiply(modelCorrection);
+            
+            // Update camera based on current mode
+            cameraController.update();
             
             // Update trail
             const positions = trail.geometry.attributes.position.array;
@@ -993,12 +1326,91 @@
             }
         }
         
+        // === Virtual Joystick Control ===
+        const joystickArea = document.getElementById('joystick-area');
+        const joystickHandle = document.getElementById('joystick-handle');
+        let joystickActive = false;
+        let joystickCenter = { x: 0, y: 0 };
+        let joystickMaxRadius = 65; // Half of 150px minus handle size
+
+        // Joystick control inputs
+        const joystickControls = {
+            aileron: 0,
+            elevator: 0
+        };
+
+        function updateJoystickCenter() {
+            const rect = joystickArea.getBoundingClientRect();
+            joystickCenter.x = rect.left + rect.width / 2;
+            joystickCenter.y = rect.top + rect.height / 2;
+        }
+
+        function handleJoystickStart(event) {
+            joystickActive = true;
+            updateJoystickCenter();
+            handleJoystickMove(event);
+            event.preventDefault();
+        }
+
+        function handleJoystickMove(event) {
+            if (!joystickActive) return;
+
+            const clientX = event.touches ? event.touches[0].clientX : event.clientX;
+            const clientY = event.touches ? event.touches[0].clientY : event.clientY;
+
+            const deltaX = clientX - joystickCenter.x;
+            const deltaY = clientY - joystickCenter.y;
+
+            // Calculate distance from center
+            const distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
+
+            // Limit to maximum radius
+            const clampedDistance = Math.min(distance, joystickMaxRadius);
+            const ratio = clampedDistance / joystickMaxRadius;
+
+            // Calculate normalized control values (-1 to 1)
+            // Reverse elevator axis: dragging up = pitch up, dragging down = pitch down
+            // Reverse aileron axis: dragging left = roll left, dragging right = roll right
+            joystickControls.aileron = -(deltaX / joystickMaxRadius) * ratio;
+            joystickControls.elevator = -(deltaY / joystickMaxRadius) * ratio;
+
+            // Update visual handle position
+            const handleX = (deltaX / distance) * clampedDistance;
+            const handleY = (deltaY / distance) * clampedDistance;
+
+            joystickHandle.style.transform = `translate(calc(-50% + ${handleX}px), calc(-50% + ${handleY}px))`;
+        }
+
+        function handleJoystickEnd(event) {
+            if (!joystickActive) return;
+
+            joystickActive = false;
+            joystickControls.aileron = 0;
+            joystickControls.elevator = 0;
+
+            // Reset handle position
+            joystickHandle.style.transform = 'translate(-50%, -50%)';
+        }
+
+        // Mouse events
+        joystickArea.addEventListener('mousedown', handleJoystickStart);
+        document.addEventListener('mousemove', handleJoystickMove);
+        document.addEventListener('mouseup', handleJoystickEnd);
+
+        // Touch events for mobile
+        joystickArea.addEventListener('touchstart', handleJoystickStart);
+        document.addEventListener('touchmove', handleJoystickMove);
+        document.addEventListener('touchend', handleJoystickEnd);
+
+        // Update joystick center on window resize
+        window.addEventListener('resize', updateJoystickCenter);
+
         // Keyboard controls
         const keys = {};
-        
+
         document.addEventListener('keydown', (e) => {
             keys[e.key.toLowerCase()] = true;
-            
+
             if (e.key.toLowerCase() === 'r' && connected) {
                 ws.send(JSON.stringify({ type: 'command', command: 'reset' }));
                 // Also clear crash screen immediately for responsiveness
@@ -1009,7 +1421,7 @@
                 trailIndex = 0;
             }
         });
-        
+
         document.addEventListener('keyup', (e) => {
             keys[e.key.toLowerCase()] = false;
         });
@@ -1017,32 +1429,58 @@
         function updateControls() {
             const rate = 0.02;
             const decay = 0.95;
-            
+
+            // Keyboard controls (when not using joystick)
+            let keyboardElevator = 0;
+            let keyboardAileron = 0;
+            let keyboardRudder = 0;
+
             // Pitch (W/S)
-            if (keys['w']) controlState.elevator = Math.max(-0.44, controlState.elevator - rate);
-            else if (keys['s']) controlState.elevator = Math.min(0.44, controlState.elevator + rate);
-            else controlState.elevator *= decay;
-            
-            // Roll (A/D)
-            if (keys['a']) controlState.aileron = Math.max(-0.44, controlState.aileron - rate);
-            else if (keys['d']) controlState.aileron = Math.min(0.44, controlState.aileron + rate);
-            else controlState.aileron *= decay;
-            
+            if (keys['w']) keyboardElevator = Math.max(-0.44, keyboardElevator - rate);
+            else if (keys['s']) keyboardElevator = Math.min(0.44, keyboardElevator + rate);
+
+            // Roll (A/D) - A = roll left, D = roll right
+            if (keys['a']) keyboardAileron = Math.min(0.44, keyboardAileron + rate);
+            else if (keys['d']) keyboardAileron = Math.max(-0.44, keyboardAileron - rate);
+
             // Yaw (Q/E)
-            if (keys['q']) controlState.rudder = Math.max(-0.44, controlState.rudder - rate);
-            else if (keys['e']) controlState.rudder = Math.min(0.44, controlState.rudder + rate);
-            else controlState.rudder *= decay;
-            
+            if (keys['q']) keyboardRudder = Math.max(-0.44, keyboardRudder - rate);
+            else if (keys['e']) keyboardRudder = Math.min(0.44, keyboardRudder + rate);
+
+            // Apply decay to keyboard inputs
+            if (!keys['w'] && !keys['s']) {
+                keyboardElevator *= decay;
+            }
+            if (!keys['a'] && !keys['d']) {
+                keyboardAileron *= decay;
+            }
+            if (!keys['q'] && !keys['e']) {
+                keyboardRudder *= decay;
+            }
+
+            // Combine joystick and keyboard inputs
+            // Joystick takes precedence when active
+            if (joystickActive) {
+                controlState.elevator = joystickControls.elevator * 0.44; // Scale to match keyboard range
+                controlState.aileron = joystickControls.aileron * 0.44;
+            } else {
+                controlState.elevator = keyboardElevator;
+                controlState.aileron = keyboardAileron;
+            }
+
+            // Rudder and throttle always use keyboard
+            controlState.rudder = keyboardRudder;
+
             // Throttle (Arrow Up/Down)
             if (keys['arrowup']) controlState.throttle = Math.min(1, controlState.throttle + 0.01);
             if (keys['arrowdown']) controlState.throttle = Math.max(0, controlState.throttle - 0.01);
-            
+
             // Update control bars
             updateControlBar('ctrl-elevator', controlState.elevator, 0.44);
             updateControlBar('ctrl-aileron', controlState.aileron, 0.44);
             updateControlBar('ctrl-rudder', controlState.rudder, 0.44);
             document.getElementById('ctrl-throttle').style.width = `${controlState.throttle * 100}%`;
-            
+
             // Send to server
             if (connected && ws.readyState === WebSocket.OPEN) {
                 ws.send(JSON.stringify({
@@ -1093,8 +1531,68 @@
             renderer.setSize(window.innerWidth, window.innerHeight);
         });
         
+        // === Camera Control UI ===
+        // Mode buttons
+        document.getElementById('camera-follow').addEventListener('click', () => {
+            cameraController.setMode(CameraMode.FOLLOW);
+        });
+
+        document.getElementById('camera-cockpit').addEventListener('click', () => {
+            cameraController.setMode(CameraMode.COCKPIT);
+        });
+
+        document.getElementById('camera-chase').addEventListener('click', () => {
+            cameraController.setMode(CameraMode.CHASE);
+        });
+
+        document.getElementById('camera-orbit').addEventListener('click', () => {
+            cameraController.setMode(CameraMode.ORBIT);
+        });
+
+        document.getElementById('camera-free').addEventListener('click', () => {
+            cameraController.setMode(CameraMode.FREE);
+        });
+
+        // Settings toggle
+        document.getElementById('camera-settings-btn').addEventListener('click', () => {
+            const settings = document.getElementById('camera-settings');
+            settings.classList.toggle('show');
+        });
+
+        // Settings inputs
+        document.getElementById('camera-distance').addEventListener('input', (e) => {
+            cameraController.distance = parseFloat(e.target.value);
+        });
+
+        document.getElementById('camera-height').addEventListener('input', (e) => {
+            cameraController.height = parseFloat(e.target.value);
+        });
+
+        document.getElementById('camera-smoothing').addEventListener('input', (e) => {
+            cameraController.smoothing = parseFloat(e.target.value);
+        });
+
+        // Keyboard shortcuts
+        document.addEventListener('keydown', (e) => {
+            // Existing controls...
+            if (e.key.toLowerCase() === 'r' && connected) {
+                // ... existing reset code ...
+            }
+
+            // Camera controls
+            if (e.key.toLowerCase() === 'c') {
+                cameraController.cycleMode();
+            }
+
+            if (e.key.toLowerCase() === 'v') {
+                const settings = document.getElementById('camera-settings');
+                settings.classList.toggle('show');
+            }
+        });
+
         // Initialize
         drawAttitudeIndicator(0, 0);
+        updateJoystickCenter();
         connect();
         animate();
     </script>
