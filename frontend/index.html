@@ -292,17 +292,16 @@
         .force-bar-fill.thrust { background: var(--accent-orange); }
         .force-bar-fill.gravity { background: #8b5cf6; }
         
-        /* Virtual Joystick - Bottom Center */
+        /* Virtual Joystick - Bottom Right */
         #joystick {
+            position: absolute;
             bottom: 20px;
-            left: 50%;
-            transform: translateX(-50%);
+            right: 20px;
             width: 150px;
             height: 150px;
             border-radius: 50%;
             background: var(--bg-panel);
             border: 2px solid var(--border-subtle);
-            position: relative;
             overflow: hidden;
             backdrop-filter: blur(10px);
         }
@@ -1078,7 +1077,7 @@
             // Save context for rotation
             attitudeCtx.save();
             attitudeCtx.translate(cx, cy);
-            attitudeCtx.rotate(-roll);
+            attitudeCtx.rotate(roll);
             
             // Sky/ground split with pitch offset
             const pitchOffset = pitch * 3; // Scale pitch for visibility
