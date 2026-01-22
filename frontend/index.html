@@ -261,8 +261,62 @@
             border: 2px solid var(--accent-cyan);
             box-shadow: var(--glow-cyan);
         }
-        
+
         #attitude-canvas {
+            width: 100%;
+            height: 100%;
+        }
+
+        /* Altimeter - Top Left */
+        #altimeter {
+            top: 20px;
+            left: 20px;
+            width: 120px;
+            height: 120px;
+            padding: 0;
+            border-radius: 50%;
+            overflow: hidden;
+            border: 2px solid var(--accent-orange);
+            box-shadow: 0 0 20px rgba(255, 107, 53, 0.3);
+        }
+
+        #altimeter-canvas {
+            width: 100%;
+            height: 100%;
+        }
+
+        /* Heading Indicator - Left, below Altimeter */
+        #heading-indicator {
+            top: 160px;
+            left: 20px;
+            width: 120px;
+            height: 120px;
+            padding: 0;
+            border-radius: 50%;
+            overflow: hidden;
+            border: 2px solid var(--accent-green);
+            box-shadow: 0 0 20px rgba(57, 255, 20, 0.3);
+        }
+
+        #heading-canvas {
+            width: 100%;
+            height: 100%;
+        }
+
+        /* Vertical Speed Indicator - Top Right */
+        #vertical-speed {
+            top: 20px;
+            right: 20px;
+            width: 120px;
+            height: 120px;
+            padding: 0;
+            border-radius: 50%;
+            overflow: hidden;
+            border: 2px solid var(--accent-cyan);
+            box-shadow: var(--glow-cyan);
+        }
+
+        #vertical-speed-canvas {
             width: 100%;
             height: 100%;
         }
@@ -609,12 +663,27 @@
             <span class="pfd-value" id="beta">0.0°</span>
         </div>
     </div>
+
+    <!-- Altimeter -->
+    <div class="hud-panel" id="altimeter">
+        <canvas id="altimeter-canvas" width="120" height="120"></canvas>
+    </div>
+
+    <!-- Heading Indicator -->
+    <div class="hud-panel" id="heading-indicator">
+        <canvas id="heading-canvas" width="120" height="120"></canvas>
+    </div>
     
     <!-- Attitude Indicator -->
     <div class="hud-panel" id="attitude">
         <canvas id="attitude-canvas" width="180" height="180"></canvas>
     </div>
     
+    <!-- Vertical Speed Indicator -->
+    <div class="hud-panel" id="vertical-speed">
+        <canvas id="vertical-speed-canvas" width="120" height="120"></canvas>
+    </div>
+
     <!-- Forces Display -->
     <div class="hud-panel" id="forces">
         <h3>Forces</h3>
@@ -1062,9 +1131,18 @@
         scene.add(trail);
         let trailIndex = 0;
         
-        // === Attitude Indicator ===
+        // === Flight Instruments ===
         const attitudeCanvas = document.getElementById('attitude-canvas');
         const attitudeCtx = attitudeCanvas.getContext('2d');
+
+        const altimeterCanvas = document.getElementById('altimeter-canvas');
+        const altimeterCtx = altimeterCanvas.getContext('2d');
+
+        const headingCanvas = document.getElementById('heading-canvas');
+        const headingCtx = headingCanvas.getContext('2d');
+
+        const verticalSpeedCanvas = document.getElementById('vertical-speed-canvas');
+        const verticalSpeedCtx = verticalSpeedCanvas.getContext('2d');
         
         function drawAttitudeIndicator(roll, pitch) {
             const w = attitudeCanvas.width;
@@ -1135,7 +1213,238 @@
             attitudeCtx.arc(cx, cy, 4, 0, Math.PI * 2);
             attitudeCtx.fill();
         }
-        
+
+        function drawAltimeter(altitudeFeet) {
+            const w = altimeterCanvas.width;
+            const h = altimeterCanvas.height;
+            const cx = w / 2;
+            const cy = h / 2;
+
+            altimeterCtx.clearRect(0, 0, w, h);
+
+            // Outer ring
+            altimeterCtx.strokeStyle = '#ffffff';
+            altimeterCtx.lineWidth = 2;
+            altimeterCtx.beginPath();
+            altimeterCtx.arc(cx, cy, 55, 0, Math.PI * 2);
+            altimeterCtx.stroke();
+
+            // Inner ring
+            altimeterCtx.beginPath();
+            altimeterCtx.arc(cx, cy, 45, 0, Math.PI * 2);
+            altimeterCtx.stroke();
+
+            // Altitude markers (every 100 feet)
+            altimeterCtx.strokeStyle = 'rgba(255, 255, 255, 0.7)';
+            altimeterCtx.lineWidth = 1;
+            for (let i = 0; i < 12; i++) {
+                const angle = (i * 30) * Math.PI / 180;
+                const innerRadius = 35;
+                const outerRadius = 45;
+
+                altimeterCtx.beginPath();
+                altimeterCtx.moveTo(cx + innerRadius * Math.cos(angle), cy + innerRadius * Math.sin(angle));
+                altimeterCtx.lineTo(cx + outerRadius * Math.cos(angle), cy + outerRadius * Math.sin(angle));
+                altimeterCtx.stroke();
+
+                // Altitude numbers (every 1000 feet)
+                if (i % 3 === 0) {
+                    const textRadius = 30;
+                    const number = (i * 1000) / 3; // 0, 1000, 2000, 3000
+                    altimeterCtx.fillStyle = '#ffffff';
+                    altimeterCtx.font = '10px JetBrains Mono';
+                    altimeterCtx.textAlign = 'center';
+                    altimeterCtx.fillText(number.toString(), cx + textRadius * Math.cos(angle), cy + textRadius * Math.sin(angle) + 3);
+                }
+            }
+
+            // Needle (altitude hundreds)
+            const altitudeAngle = (altitudeFeet % 1000) / 1000 * Math.PI * 2;
+            altimeterCtx.strokeStyle = '#ff6b35';
+            altimeterCtx.lineWidth = 3;
+            altimeterCtx.beginPath();
+            altimeterCtx.moveTo(cx, cy);
+            altimeterCtx.lineTo(cx + 40 * Math.cos(altitudeAngle - Math.PI/2), cy + 40 * Math.sin(altitudeAngle - Math.PI/2));
+            altimeterCtx.stroke();
+
+            // Center dot
+            altimeterCtx.fillStyle = '#ff6b35';
+            altimeterCtx.beginPath();
+            altimeterCtx.arc(cx, cy, 4, 0, Math.PI * 2);
+            altimeterCtx.fill();
+
+            // Digital altitude display
+            altimeterCtx.fillStyle = '#00d4ff';
+            altimeterCtx.font = '12px JetBrains Mono';
+            altimeterCtx.textAlign = 'center';
+            altimeterCtx.fillText(Math.round(altitudeFeet).toString(), cx, cy + 50);
+
+            altimeterCtx.fillStyle = 'rgba(0, 212, 255, 0.7)';
+            altimeterCtx.font = '8px JetBrains Mono';
+            altimeterCtx.fillText('FT', cx, cy + 60);
+        }
+
+        function drawHeadingIndicator(heading) {
+            const w = headingCanvas.width;
+            const h = headingCanvas.height;
+            const cx = w / 2;
+            const cy = h / 2;
+
+            headingCtx.clearRect(0, 0, w, h);
+
+            // Outer ring
+            headingCtx.strokeStyle = '#ffffff';
+            headingCtx.lineWidth = 2;
+            headingCtx.beginPath();
+            headingCtx.arc(cx, cy, 55, 0, Math.PI * 2);
+            headingCtx.stroke();
+
+            // Compass rose
+            headingCtx.strokeStyle = 'rgba(255, 255, 255, 0.7)';
+            headingCtx.lineWidth = 1;
+
+            const directions = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
+            for (let i = 0; i < 8; i++) {
+                const angle = (i * 45) * Math.PI / 180;
+                const innerRadius = i % 2 === 0 ? 35 : 40; // Major directions longer
+                const outerRadius = 50;
+
+                headingCtx.beginPath();
+                headingCtx.moveTo(cx + innerRadius * Math.cos(angle), cy + innerRadius * Math.sin(angle));
+                headingCtx.lineTo(cx + outerRadius * Math.cos(angle), cy + outerRadius * Math.sin(angle));
+                headingCtx.stroke();
+
+                // Direction labels
+                if (i % 2 === 0) {
+                    const textRadius = 30;
+                    headingCtx.fillStyle = '#ffffff';
+                    headingCtx.font = '10px JetBrains Mono';
+                    headingCtx.textAlign = 'center';
+                    headingCtx.fillText(directions[i], cx + textRadius * Math.cos(angle), cy + textRadius * Math.sin(angle) + 3);
+                }
+            }
+
+            // Heading needle (points north)
+            headingCtx.strokeStyle = '#39ff14';
+            headingCtx.lineWidth = 3;
+            headingCtx.beginPath();
+            headingCtx.moveTo(cx, cy - 45);
+            headingCtx.lineTo(cx, cy);
+            headingCtx.stroke();
+
+            // Aircraft symbol (fixed, compass rotates)
+            headingCtx.save();
+            headingCtx.translate(cx, cy);
+            headingCtx.rotate(-heading * Math.PI / 180); // Rotate compass rose
+
+            // Compass rose numbers (0-360)
+            headingCtx.fillStyle = '#ffffff';
+            headingCtx.font = '9px JetBrains Mono';
+            headingCtx.textAlign = 'center';
+            for (let i = 0; i < 36; i++) {
+                const angle = (i * 10) * Math.PI / 180;
+                const textRadius = 25;
+
+                if (i % 3 === 0) { // Every 30 degrees
+                    headingCtx.fillText((i * 10).toString(), textRadius * Math.cos(angle), textRadius * Math.sin(angle) + 3);
+                }
+            }
+
+            headingCtx.restore();
+
+            // Center dot
+            headingCtx.fillStyle = '#39ff14';
+            headingCtx.beginPath();
+            headingCtx.arc(cx, cy, 4, 0, Math.PI * 2);
+            headingCtx.fill();
+
+            // Digital heading display
+            headingCtx.fillStyle = '#00d4ff';
+            headingCtx.font = '12px JetBrains Mono';
+            headingCtx.textAlign = 'center';
+            headingCtx.fillText(Math.round(heading).toString().padStart(3, '0'), cx, cy + 50);
+
+            headingCtx.fillStyle = 'rgba(0, 212, 255, 0.7)';
+            headingCtx.font = '8px JetBrains Mono';
+            headingCtx.fillText('°', cx, cy + 60);
+        }
+
+        function drawVerticalSpeedIndicator(climbRateFpm) {
+            const w = verticalSpeedCanvas.width;
+            const h = verticalSpeedCanvas.height;
+            const cx = w / 2;
+            const cy = h / 2;
+
+            verticalSpeedCtx.clearRect(0, 0, w, h);
+
+            // Outer ring
+            verticalSpeedCtx.strokeStyle = '#ffffff';
+            verticalSpeedCtx.lineWidth = 2;
+            verticalSpeedCtx.beginPath();
+            verticalSpeedCtx.arc(cx, cy, 55, 0, Math.PI * 2);
+            verticalSpeedCtx.stroke();
+
+            // Vertical speed scale (-2000 to +2000 fpm)
+            verticalSpeedCtx.strokeStyle = 'rgba(255, 255, 255, 0.7)';
+            verticalSpeedCtx.lineWidth = 1;
+
+            for (let i = -4; i <= 4; i++) {
+                const value = i * 500; // -2000, -1500, -1000, -500, 0, 500, 1000, 1500, 2000
+                const angle = (i * 45) * Math.PI / 180; // 45 degrees per 500 fpm
+                const innerRadius = 35;
+                const outerRadius = 50;
+
+                verticalSpeedCtx.beginPath();
+                verticalSpeedCtx.moveTo(cx + innerRadius * Math.cos(angle), cy + innerRadius * Math.sin(angle));
+                verticalSpeedCtx.lineTo(cx + outerRadius * Math.cos(angle), cy + outerRadius * Math.sin(angle));
+                verticalSpeedCtx.stroke();
+
+                // Labels
+                if (i !== 0) {
+                    const textRadius = 30;
+                    verticalSpeedCtx.fillStyle = '#ffffff';
+                    verticalSpeedCtx.font = '8px JetBrains Mono';
+                    verticalSpeedCtx.textAlign = 'center';
+                    verticalSpeedCtx.fillText(value.toString(), cx + textRadius * Math.cos(angle), cy + textRadius * Math.sin(angle) + 3);
+                }
+            }
+
+            // Zero line (horizontal)
+            verticalSpeedCtx.strokeStyle = '#ffffff';
+            verticalSpeedCtx.lineWidth = 2;
+            verticalSpeedCtx.beginPath();
+            verticalSpeedCtx.moveTo(cx - 35, cy);
+            verticalSpeedCtx.lineTo(cx + 35, cy);
+            verticalSpeedCtx.stroke();
+
+            // Needle
+            const maxRate = 2000; // fpm
+            const needleAngle = Math.max(-Math.PI/2, Math.min(Math.PI/2, (climbRateFpm / maxRate) * (Math.PI/2)));
+            verticalSpeedCtx.strokeStyle = '#00d4ff';
+            verticalSpeedCtx.lineWidth = 3;
+            verticalSpeedCtx.beginPath();
+            verticalSpeedCtx.moveTo(cx, cy);
+            verticalSpeedCtx.lineTo(cx + 40 * Math.cos(needleAngle - Math.PI/2), cy + 40 * Math.sin(needleAngle - Math.PI/2));
+            verticalSpeedCtx.stroke();
+
+            // Center dot
+            verticalSpeedCtx.fillStyle = '#00d4ff';
+            verticalSpeedCtx.beginPath();
+            verticalSpeedCtx.arc(cx, cy, 4, 0, Math.PI * 2);
+            verticalSpeedCtx.fill();
+
+            // Digital vertical speed display
+            verticalSpeedCtx.fillStyle = '#ff6b35';
+            verticalSpeedCtx.font = '11px JetBrains Mono';
+            verticalSpeedCtx.textAlign = 'center';
+            const sign = climbRateFpm >= 0 ? '+' : '';
+            verticalSpeedCtx.fillText(sign + Math.round(climbRateFpm).toString(), cx, cy + 50);
+
+            verticalSpeedCtx.fillStyle = 'rgba(255, 107, 53, 0.7)';
+            verticalSpeedCtx.font = '7px JetBrains Mono';
+            verticalSpeedCtx.fillText('FPM', cx, cy + 58);
+        }
+
         // === WebSocket Connection ===
         let ws = null;
         let connected = false;
@@ -1238,6 +1547,19 @@
                 state.euler.roll * Math.PI / 180,
                 state.euler.pitch
             );
+
+            // Unit conversions for traditional instruments
+            const altitudeFeet = state.altitude * 3.28084; // meters to feet
+            const climbRateFpm = state.velocity.climb_rate * 196.85; // m/s to feet per minute
+
+            // Altimeter
+            drawAltimeter(altitudeFeet);
+
+            // Heading indicator
+            drawHeadingIndicator(state.euler.heading);
+
+            // Vertical speed indicator
+            drawVerticalSpeedIndicator(climbRateFpm);
             
             // Force bars
             if (state.forces) {
@@ -1591,6 +1913,9 @@
 
         // Initialize
         drawAttitudeIndicator(0, 0);
+        drawAltimeter(0);
+        drawHeadingIndicator(0);
+        drawVerticalSpeedIndicator(0);
         updateJoystickCenter();
         connect();
         animate();
