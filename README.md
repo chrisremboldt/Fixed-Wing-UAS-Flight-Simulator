@@ -75,6 +75,26 @@ python run_px4_bridge.py --connection tcp:127.0.0.1:4560
 
 See `PX4_SITL_INTEGRATION.md` for setup and actuator mapping details.
 
+### Run DAA Policy (`final_model.pt`)
+
+Checkpoint architecture and training env live in `drones/scratch_built_daa`. This repo loads the same `ImpalaCNN` weights and drives the sim with pixel observations.
+
+```bash
+# Verify checkpoint loads (pytest)
+python -m pytest tests/test_policy.py -q
+
+# Headless closed-loop eval with intruders
+python run_policy_eval.py --policy final_model.pt --duration 120 --seed 42
+
+# Or via main entrypoint
+python -m simulator.main --policy final_model.pt --duration 120
+
+# PX4 bridge with policy override (absolute controls)
+python run_px4_bridge.py --enable-intruders --policy final_model.pt
+```
+
+**Note:** Training used GPU nvdiffrast rendering and Warp physics. Expect sim-to-sim gap until render/physics are aligned further. Native eval: `drones/scratch_built_daa/evaluate_model.py` (requires CUDA + nvdiffrast).
+
 ## 📊 Validation & Tuning Workflow
 
 The simulator includes a complete validation pipeline using real-world airfoil data:

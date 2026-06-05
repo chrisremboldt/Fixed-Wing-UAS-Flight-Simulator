@@ -485,6 +485,12 @@ def parse_args() -> argparse.Namespace:
         type=str,
         help="Path to PyTorch checkpoint (.pt) for ModelPolicy intervention (RFC 001)",
     )
+    parser.add_argument(
+        "--policy-device",
+        type=str,
+        default="cpu",
+        help="Torch device for --policy (cpu, cuda, mps)",
+    )
 
     parser.add_argument("--reverse-aileron", action="store_true", help="Invert aileron sign")
     parser.add_argument("--reverse-elevator", action="store_true", help="Invert elevator sign")
@@ -516,8 +522,13 @@ def main() -> None:
         from pathlib import Path
         from .policy import ModelPolicy
 
-        intervention_policy = ModelPolicy(Path(args.policy))
-        print(f"ModelPolicy loaded from {args.policy}")
+        intervention_policy = ModelPolicy(
+            Path(args.policy),
+            device=args.policy_device,
+            deterministic=True,
+            control_mode='absolute',
+        )
+        print(f"ModelPolicy loaded from {args.policy} (device={args.policy_device})")
     elif args.simple_daa:
         intervention_policy = SimpleBearingAvoidancePolicy()
 

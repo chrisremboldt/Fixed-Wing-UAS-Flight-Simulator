@@ -256,6 +256,65 @@ def run_interactive_simulation(aircraft: AircraftConfig, enable_intruders: bool 
     )
 
 
+def run_policy_simulation(
+    aircraft: AircraftConfig,
+    policy_path: str,
+    duration: float = 120.0,
+    device: str = 'cpu',
+    enable_intruders: bool = True,
+    seed: int = 42,
+):
+    """Run headless simulation with trained DAA policy controlling the aircraft."""
+    from .policy import ModelPolicy
+
+    environment = Environment()
+    sim_config = SimulationConfig(dt=0.01)
+    dynamics = FlightDynamics(aircraft, environment, sim_config)
+
+    trim_result = compute_trim(
+        TrimCondition(airspeed=25.0, altitude=100.0),
+        aircraft,
+        environment,
+    )
+    dynamics.reset(trim_result.state if trim_result.success else None)
+
+    intruder_manager = None
+    if enable_intruders:
+        intruder_config = IntruderConfig(
+            spawn_rate=0.15,
+            max_intruders=5,
+            spawn_distance_min=300.0,
+            spawn_distance_max=1200.0,
+        )
+        intruder_manager = IntruderManager(intruder_config, environment)
+        intruder_manager.random.seed(seed)
+
+    policy = ModelPolicy(policy_path, device=device, deterministic=True)
+    steps = int(duration / sim_config.dt)
+
+    print(f'Running policy simulation for {duration}s ({steps} steps)...')
+    for _ in range(steps):
+        if intruder_manager and intruder_manager.should_spawn_intruder(sim_config.dt, dynamics.state):
+            intruder_manager.spawn_intruder(dynamics.state)
+
+        controls = policy.action_to_controls(
+            policy.predict_action(dynamics, intruder_manager),
+            aircraft,
+        )
+        dynamics.step(controls)
+
+        if intruder_manager:
+            intruder_manager.update_intruders(sim_config.dt, dynamics.state)
+
+        if dynamics.crash_state.crashed:
+            print(f'Crashed at t={dynamics.state.time:.1f}s')
+            break
+
+    airspeed = float(np.linalg.norm(dynamics.state.velocity_body))
+    print(f'Complete. t={dynamics.state.time:.1f}s alt={dynamics.state.altitude:.1f}m '
+          f'airspeed={airspeed:.1f}m/s')
+
+
 def run_headless_simulation(
     aircraft: AircraftConfig,
     duration: float = 60.0,
@@ -347,6 +406,17 @@ def main():
         action='store_true',
         help='Disable intruder spawning in interactive mode'
     )
+    parser.add_argument(
+        '--policy',
+        type=str,
+        help='Path to trained DAA checkpoint (.pt) for headless policy eval'
+    )
+    parser.add_argument(
+        '--device',
+        type=str,
+        default='cpu',
+        help='Torch device for --policy mode (cpu, cuda, mps)'
+    )
     
     args = parser.parse_args()
     
@@ -361,6 +431,14 @@ def main():
     # Run appropriate mode
     if args.validate:
         run_validation_tests(aircraft)
+    elif args.policy:
+        run_policy_simulation(
+            aircraft,
+            args.policy,
+            duration=args.duration,
+            device=args.device,
+            enable_intruders=not args.no_intruders,
+        )
     elif args.headless:
         run_headless_simulation(aircraft, args.duration, args.output)
     else:

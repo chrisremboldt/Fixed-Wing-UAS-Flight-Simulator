@@ -1,4 +1,4 @@
-"""Observation builders for policy inference (RFC 001 phase 1)."""
+"""Observation builders for policy inference (RFC 001)."""
 
 from __future__ import annotations
 
@@ -9,6 +9,7 @@ import numpy as np
 
 from ..dynamics import FlightDynamics
 from ..intruders import IntruderManager
+from .rendering import CPUPixelRenderer, CameraConfig
 
 
 @dataclass
@@ -17,15 +18,34 @@ class ObservationSpec:
 
     image_size: tuple[int, int] = (128, 128)
     channels: int = 3
-    normalize_mean: tuple[float, float, float] = (0.0, 0.0, 0.0)
-    normalize_std: tuple[float, float, float] = (1.0, 1.0, 1.0)
+    fov_deg: float = 90.0
+
+
+class PixelObservationBuilder:
+    """128x128x3 uint8 forward camera obs (matches scratch_built_daa training)."""
+
+    def __init__(self, spec: Optional[ObservationSpec] = None):
+        self.spec = spec or ObservationSpec()
+        size = self.spec.image_size[0]
+        self.renderer = CPUPixelRenderer(CameraConfig(
+            img_size=size,
+            fov_deg=self.spec.fov_deg,
+        ))
+
+    def build(
+        self,
+        dynamics: FlightDynamics,
+        intruder_manager: Optional[IntruderManager],
+    ) -> np.ndarray:
+        """Return (H, W, C) uint8 RGB."""
+        return self.renderer.render(dynamics, intruder_manager)
 
 
 class BearingMapObservationBuilder:
     """
-    v0 observation: synthetic forward-sector occupancy grid from intruder geometry.
+    Legacy v0 observation: synthetic forward-sector occupancy grid.
 
-    Unblocks inference before a full camera renderer exists.
+    Not compatible with final_model.pt — kept for debugging only.
     """
 
     def __init__(self, spec: Optional[ObservationSpec] = None):
@@ -44,7 +64,7 @@ class BearingMapObservationBuilder:
 
         own = dynamics.state
         R_ned_to_body = own.quaternion.to_dcm().T
-        fov_rad = np.radians(90.0)
+        fov_rad = np.radians(self.spec.fov_deg)
 
         for intruder in intruder_manager.intruders:
             rel_ned = intruder.dynamics.state.position - own.position

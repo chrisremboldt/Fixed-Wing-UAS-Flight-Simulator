@@ -79,7 +79,7 @@ python run_px4_bridge.py \
   --policy final_model.pt
 ```
 
-Uses synthetic bearing-map observations until a camera renderer lands. Action scaling is provisional — see `docs/rfcs/001-pytorch-policy-integration.md`.
+Uses CPU pixel observations (128×128 RGB) and absolute control mapping from `scratch_built_daa` training. See `docs/rfcs/001-pytorch-policy-integration.md`.
 
 ## Current Limitations
 

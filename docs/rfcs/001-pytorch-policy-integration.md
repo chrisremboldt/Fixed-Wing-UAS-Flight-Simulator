@@ -1,6 +1,6 @@
 # RFC 001: PyTorch Policy Integration Harness
 
-**Status:** Proposed  
+**Status:** Phase 1 implemented (2026-06-05)  
 **Author:** Simulator review (2026-06-05)  
 **Repo:** [chrisremboldt/Fixed-Wing-UAS-Flight-Simulator](https://github.com/chrisremboldt/Fixed-Wing-UAS-Flight-Simulator)
 
@@ -21,9 +21,9 @@ Add a closed-loop path to load `final_model.pt`, build observations, run inferen
 | Architecture | 3× CNN blocks (3→16→32→32 channels) |
 | Input | RGB, ~128×128 (inferred from 8192-dim flatten) |
 | Output | 4 continuous actions (`log_std` shape `(4,)`) |
-| Missing in repo | Model class definition, normalization stats, training config |
-
-Likely action mapping: elevator, aileron, rudder, throttle — **must be confirmed against training code**.
+| Training source | `drones/scratch_built_daa/train.py` |
+| Action order | `[throttle, aileron, elevator, rudder]` in `[-1, 1]` after `tanh` |
+| Normalization | `obs / 255.0` (uint8 RGB) |
 
 ## Proposed design
 
@@ -42,27 +42,22 @@ class ObservationSpec:
     state_features: list[str]  # e.g. ["airspeed", "alpha", "beta"]
 ```
 
-Initial v0: **synthetic bearing map** (top-down or forward-sector occupancy grid) rendered from intruder NED positions — unblocks inference before a full camera sim.
+**Implemented:** `PixelObservationBuilder` + `CPUPixelRenderer` (128×128×3 uint8, 90° FOV).
+Legacy bearing-map builder retained for debugging only.
 
-### 2. `ModelPolicy` (`ControlInterventionPolicy`)
+### 2. `ModelPolicy` (`ControlInterventionPolicy`) — implemented
 
-```python
-class ModelPolicy:
-    def __init__(self, checkpoint: Path, spec: ObservationSpec, device: str = "cpu"): ...
-    def intervene(self, controls, dynamics, intruder_manager) -> ControlInputs: ...
-```
-
-- Load checkpoint into a shared `PolicyNetwork` module (to be added under `simulator/policy/`).
-- Map network outputs → `ControlInputs` with aircraft limit clipping.
-- Support **override** vs **blend** modes with PX4-commanded controls.
+- `simulator/policy/architecture.py` — `ImpalaCNN` + `PufferPolicy` (strict checkpoint load)
+- `simulator/policy/model_policy.py` — inference + absolute/blend control modes
+- `simulator/policy/actions.py` — training action → `ControlInputs` mapping
 
 ### 3. Camera / render path (v1)
 
 Phased:
 
-1. **v0:** Tensor renderer from geometry (intruder bearings, range bins) — fast, deterministic.
-2. **v1:** Off-axis pinhole camera from ownship pose (pygame/OpenGL or headless Three snapshot).
-3. **v2:** Noise, latency, and resolution degradation to match training domain.
+1. **v0 (done):** CPU pinhole renderer — sky/ground + intruder blobs.
+2. **v1:** Port nvdiffrast mesh renderer from training env (GPU).
+3. **v2:** Noise, latency, resolution degradation for domain randomization parity.
 
 ### 4. Evaluation harness
 
