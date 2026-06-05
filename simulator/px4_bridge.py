@@ -520,15 +520,20 @@ def main() -> None:
     intervention_policy = None
     if args.policy:
         from pathlib import Path
-        from .policy import ModelPolicy
+        from .policy import TrimAssistedModelPolicy
+        from .trim import TrimCondition, compute_trim
 
-        intervention_policy = ModelPolicy(
-            Path(args.policy),
-            device=args.policy_device,
-            deterministic=True,
-            control_mode='absolute',
+        trim = compute_trim(
+            TrimCondition(airspeed=25.0, altitude=100.0),
+            dynamics.aircraft,
+            environment,
         )
-        print(f"ModelPolicy loaded from {args.policy} (device={args.policy_device})")
+        intervention_policy = TrimAssistedModelPolicy.from_checkpoint(
+            args.policy,
+            trim.controls,
+            device=args.policy_device,
+        )
+        print(f"TrimAssistedModelPolicy loaded from {args.policy} (device={args.policy_device})")
     elif args.simple_daa:
         intervention_policy = SimpleBearingAvoidancePolicy()
 

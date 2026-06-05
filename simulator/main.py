@@ -265,7 +265,7 @@ def run_policy_simulation(
     seed: int = 42,
 ):
     """Run headless simulation with trained DAA policy controlling the aircraft."""
-    from .policy import ModelPolicy
+    from .policy import TrimAssistedModelPolicy
 
     environment = Environment()
     sim_config = SimulationConfig(dt=0.01)
@@ -276,6 +276,8 @@ def run_policy_simulation(
         aircraft,
         environment,
     )
+    if not trim_result.success:
+        print('Warning: trim failed; policy sim may be unstable')
     dynamics.reset(trim_result.state if trim_result.success else None)
 
     intruder_manager = None
@@ -289,18 +291,19 @@ def run_policy_simulation(
         intruder_manager = IntruderManager(intruder_config, environment)
         intruder_manager.random.seed(seed)
 
-    policy = ModelPolicy(policy_path, device=device, deterministic=True)
+    policy = TrimAssistedModelPolicy.from_checkpoint(
+        policy_path,
+        trim_result.controls,
+        device=device,
+    )
     steps = int(duration / sim_config.dt)
 
-    print(f'Running policy simulation for {duration}s ({steps} steps)...')
+    print(f'Running trim-assisted policy simulation for {duration}s ({steps} steps)...')
     for _ in range(steps):
         if intruder_manager and intruder_manager.should_spawn_intruder(sim_config.dt, dynamics.state):
             intruder_manager.spawn_intruder(dynamics.state)
 
-        controls = policy.action_to_controls(
-            policy.predict_action(dynamics, intruder_manager),
-            aircraft,
-        )
+        controls = policy.compute_controls(dynamics, intruder_manager)
         dynamics.step(controls)
 
         if intruder_manager:

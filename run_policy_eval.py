@@ -18,7 +18,7 @@ from simulator.dynamics import FlightDynamics, SimulationConfig
 from simulator.environment import Environment
 from simulator.intruders import IntruderConfig, IntruderManager
 from simulator.main import create_default_aircraft
-from simulator.policy import ModelPolicy
+from simulator.policy import ModelPolicy, TrimAssistedModelPolicy, TrimAssistConfig
 from simulator.trim import TrimCondition, compute_trim
 
 NMAC_DISTANCE_M = 152.4  # 500 ft
@@ -62,11 +62,30 @@ def run_evaluation(args: argparse.Namespace) -> int:
     intruder_manager = IntruderManager(intruder_config, environment)
     intruder_manager.random.seed(args.seed)
 
-    policy = ModelPolicy(
-        args.policy,
-        device=args.device,
-        deterministic=not args.stochastic,
-    )
+    if args.full_policy:
+        policy = ModelPolicy(
+            args.policy,
+            device=args.device,
+            deterministic=not args.stochastic,
+        )
+        get_controls = lambda: policy.action_to_controls(
+            policy.predict_action(dynamics, intruder_manager),
+            aircraft,
+        )
+    else:
+        if not trim.success:
+            raise SystemExit('Trim failed; cannot run trim-assisted policy mode')
+        assisted = TrimAssistedModelPolicy.from_checkpoint(
+            args.policy,
+            trim.controls,
+            device=args.device,
+            config=TrimAssistConfig(
+                engage_distance_m=args.engage_distance,
+                max_authority=args.max_authority,
+                hold_trim_throttle=not args.policy_throttle,
+            ),
+        )
+        get_controls = lambda: assisted.compute_controls(dynamics, intruder_manager)
 
     steps = int(args.duration / sim_config.dt)
     min_dist_overall = float('inf')
@@ -78,11 +97,7 @@ def run_evaluation(args: argparse.Namespace) -> int:
             intruder_manager.spawn_intruder(dynamics.state)
             spawn_count += 1
 
-        controls = policy.action_to_controls(
-            policy.predict_action(dynamics, intruder_manager),
-            aircraft,
-        )
-        dynamics.step(controls)
+        dynamics.step(get_controls())
         intruder_manager.update_intruders(sim_config.dt, dynamics.state)
 
         d = min_intruder_distance(dynamics, intruder_manager)
@@ -120,6 +135,30 @@ def main() -> None:
     parser.add_argument('--spawn-rate', type=float, default=0.15, dest='spawn_rate')
     parser.add_argument('--max-intruders', type=int, default=5, dest='max_intruders')
     parser.add_argument('--stochastic', action='store_true', help='Sample actions (default: deterministic)')
+    parser.add_argument(
+        '--full-policy',
+        action='store_true',
+        help='Use raw policy controls (no trim assist; likely unstable in this sim)',
+    )
+    parser.add_argument(
+        '--engage-distance',
+        type=float,
+        default=1000.0,
+        dest='engage_distance',
+        help='Start blending policy inside this range (m)',
+    )
+    parser.add_argument(
+        '--max-authority',
+        type=float,
+        default=0.6,
+        dest='max_authority',
+        help='Max policy blend at closest threat',
+    )
+    parser.add_argument(
+        '--policy-throttle',
+        action='store_true',
+        help='Let policy command throttle (default: hold trim throttle)',
+    )
     args = parser.parse_args()
 
     if not Path(args.policy).exists():

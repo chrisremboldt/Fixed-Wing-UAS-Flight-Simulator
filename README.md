@@ -83,8 +83,11 @@ Checkpoint architecture and training env live in `drones/scratch_built_daa`. Thi
 # Verify checkpoint loads (pytest)
 python -m pytest tests/test_policy.py -q
 
-# Headless closed-loop eval with intruders
+# Headless closed-loop eval (trim-assisted by default — stable in this sim)
 python run_policy_eval.py --policy final_model.pt --duration 120 --seed 42
+
+# Raw policy output (training-faithful but unstable here until render/physics parity)
+python run_policy_eval.py --policy final_model.pt --full-policy --duration 30
 
 # Or via main entrypoint
 python -m simulator.main --policy final_model.pt --duration 120
