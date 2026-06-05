@@ -11,7 +11,10 @@ from simulator.frames import (
     quaternion_derivative, 
     wind_angles,
     body_to_wind_dcm,
-    wind_to_body_dcm
+    wind_to_body_dcm,
+    body_quaternion_to_threejs,
+    ned_position_to_threejs,
+    rotation_matrix_to_quaternion,
 )
 
 
@@ -137,6 +140,36 @@ class TestWindAngles:
         assert V == 0.0
         assert alpha == 0.0
         assert beta == 0.0
+
+
+class TestThreeJsTransforms:
+    """Tests for NED -> Three.js visualization transforms."""
+
+    def test_ned_position_to_threejs(self):
+        """NED [N, E, D] maps to Three.js [E, Up, N]."""
+        x, y, z = ned_position_to_threejs(np.array([100.0, 50.0, -200.0]))
+        assert abs(x - 50.0) < 1e-10
+        assert abs(y - 200.0) < 1e-10
+        assert abs(z - 100.0) < 1e-10
+
+    def test_body_quaternion_level_north(self):
+        """Level flight heading north should map to identity in Three.js."""
+        q = Quaternion.from_euler(0.0, 0.0, 0.0)
+        w, x, y, z = body_quaternion_to_threejs(q)
+        q_three = Quaternion(w, x, y, z)
+        phi, theta, psi = q_three.to_euler()
+        assert abs(phi) < 1e-6
+        assert abs(theta) < 1e-6
+        assert abs(psi) < 1e-6
+
+    def test_rotation_matrix_roundtrip(self):
+        """Matrix->quaternion should preserve rotation."""
+        q = Quaternion.from_euler(0.2, -0.1, 0.5)
+        R = q.to_dcm()
+        w, x, y, z = rotation_matrix_to_quaternion(R)
+        q2 = Quaternion(w, x, y, z)
+        v = np.array([1.0, 2.0, 3.0])
+        np.testing.assert_array_almost_equal(q.rotate_vector(v), q2.rotate_vector(v))
 
 
 class TestWindBodyTransforms:

@@ -66,6 +66,15 @@ python -m simulator.main --aircraft configs/generic_uav.yaml
 # Open http://localhost:8080 in your browser
 ```
 
+### Run PX4 SITL Bridge
+
+```bash
+# Connect this simulator to PX4 via MAVLink
+python run_px4_bridge.py --connection tcp:127.0.0.1:4560
+```
+
+See `PX4_SITL_INTEGRATION.md` for setup and actuator mapping details.
+
 ## 📊 Validation & Tuning Workflow
 
 The simulator includes a complete validation pipeline using real-world airfoil data:
@@ -154,6 +163,7 @@ Cm = Cm₀ + Cmₐ·α + Cmq·q̂ + Cmδₑ·δₑ
 
 - **[VALIDATION_GUIDE.md](VALIDATION_GUIDE.md)** - Complete guide to validation and tuning
 - **[IMPLEMENTATION_SUMMARY.md](IMPLEMENTATION_SUMMARY.md)** - Technical details
+- **[PX4_SITL_INTEGRATION.md](PX4_SITL_INTEGRATION.md)** - PX4/MAVLink SITL bridge usage
 - **[examples/](examples/)** - Example scripts and workflows
 
 ## 🔧 Core Modules
@@ -170,6 +180,7 @@ Cm = Cm₀ + Cmₐ·α + Cmq·q̂ + Cmδₑ·δₑ
 | `simulator/tuning.py` | Automated parameter optimization |
 | `simulator/plotting.py` | Aerospace-standard plots |
 | `simulator/data_export.py` | NASA-format CSV exports |
+| `simulator/px4_bridge.py` | PX4 MAVLink SITL integration (HIL sensor/actuator bridge) |
 
 ## 🎓 Validation Tests
 

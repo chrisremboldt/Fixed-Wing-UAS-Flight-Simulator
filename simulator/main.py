@@ -14,6 +14,7 @@ from .state import AircraftState, ControlInputs
 from .dynamics import FlightDynamics, SimulationConfig
 from .trim import compute_trim, TrimCondition, validate_stall_speed
 from .frames import Quaternion
+from .intruders import IntruderManager, IntruderConfig
 
 
 def create_default_aircraft() -> AircraftConfig:
@@ -196,22 +197,22 @@ def run_validation_tests(aircraft: AircraftConfig, verbose: bool = True):
         print("="*60 + "\n")
 
 
-def run_interactive_simulation(aircraft: AircraftConfig):
+def run_interactive_simulation(aircraft: AircraftConfig, enable_intruders: bool = True):
     """Run interactive simulation with visualization."""
     from .visualization import run_with_visualization
-    
+
     environment = Environment()
     sim_config = SimulationConfig(dt=0.01)
-    
+
     # Start from trim
     trim_result = compute_trim(
         TrimCondition(airspeed=25.0, altitude=100.0),
         aircraft,
         environment
     )
-    
+
     dynamics = FlightDynamics(aircraft, environment, sim_config)
-    
+
     if trim_result.success:
         print(f"Starting from trimmed flight at {25.0} m/s")
         dynamics.reset(trim_result.state)
@@ -219,18 +220,37 @@ def run_interactive_simulation(aircraft: AircraftConfig):
     else:
         print("Warning: Trim failed, starting from default state")
         dynamics.reset()
-    
+
+    # Create intruder manager if enabled
+    intruder_manager = None
+    if enable_intruders:
+        intruder_config = IntruderConfig(
+            spawn_rate=0.2,  # 20% chance per second (more frequent spawning)
+            max_intruders=5,  # Allow more intruders
+            spawn_distance_min=300.0,
+            spawn_distance_max=1000.0,
+            spawn_altitude_min=50.0,
+            spawn_altitude_max=200.0,
+            cruise_speed=35.0,  # m/s - faster intruders
+            speed_variation=8.0  # m/s - wider speed range
+        )
+        intruder_manager = IntruderManager(intruder_config, environment)
+        print("Intruder spawning enabled")
+
     # Get frontend directory
     frontend_dir = Path(__file__).parent.parent / "frontend"
-    
+
     print("\nStarting visualization server...")
     print("Open http://localhost:8080 in your browser")
     print("WebSocket running on ws://localhost:8765")
+    if enable_intruders:
+        print("Intruders will spawn randomly around your aircraft")
     print("Press Ctrl+C to stop\n")
-    
+
     run_with_visualization(
         dynamics,
         frontend_dir=str(frontend_dir) if frontend_dir.exists() else None,
+        intruder_manager=intruder_manager,
         ws_port=8765,
         http_port=8080
     )
@@ -322,6 +342,11 @@ def main():
         type=str,
         help='Output file for headless simulation'
     )
+    parser.add_argument(
+        '--no-intruders',
+        action='store_true',
+        help='Disable intruder spawning in interactive mode'
+    )
     
     args = parser.parse_args()
     
@@ -339,7 +364,7 @@ def main():
     elif args.headless:
         run_headless_simulation(aircraft, args.duration, args.output)
     else:
-        run_interactive_simulation(aircraft)
+        run_interactive_simulation(aircraft, enable_intruders=not args.no_intruders)
 
 
 if __name__ == "__main__":

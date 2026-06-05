@@ -263,3 +263,64 @@ def wind_to_body_dcm(alpha: float, beta: float) -> np.ndarray:
     """
     return body_to_wind_dcm(alpha, beta).T
 
+
+# NED [North, East, Down] -> Three.js [East, Up, North]
+NED_TO_THREEJS = np.array([
+    [0, 1, 0],
+    [0, 0, -1],
+    [1, 0, 0],
+])
+
+
+def ned_position_to_threejs(position_ned: np.ndarray) -> Tuple[float, float, float]:
+    """Convert NED position (m) to Three.js world coordinates."""
+    p = np.asarray(position_ned, dtype=np.float64)
+    return float(p[1]), float(-p[2]), float(p[0])
+
+
+def rotation_matrix_to_quaternion(R: np.ndarray) -> Tuple[float, float, float, float]:
+    """
+    Convert a 3x3 rotation matrix to a unit quaternion (w, x, y, z).
+
+    Uses Shepperd's method for numerical stability.
+    """
+    trace = np.trace(R)
+
+    if trace > 0:
+        s = 0.5 / np.sqrt(trace + 1.0)
+        w = 0.25 / s
+        x = (R[2, 1] - R[1, 2]) * s
+        y = (R[0, 2] - R[2, 0]) * s
+        z = (R[1, 0] - R[0, 1]) * s
+    elif R[0, 0] > R[1, 1] and R[0, 0] > R[2, 2]:
+        s = 2.0 * np.sqrt(1.0 + R[0, 0] - R[1, 1] - R[2, 2])
+        w = (R[2, 1] - R[1, 2]) / s
+        x = 0.25 * s
+        y = (R[0, 1] + R[1, 0]) / s
+        z = (R[0, 2] + R[2, 0]) / s
+    elif R[1, 1] > R[2, 2]:
+        s = 2.0 * np.sqrt(1.0 + R[1, 1] - R[0, 0] - R[2, 2])
+        w = (R[0, 2] - R[2, 0]) / s
+        x = (R[0, 1] + R[1, 0]) / s
+        y = 0.25 * s
+        z = (R[1, 2] + R[2, 1]) / s
+    else:
+        s = 2.0 * np.sqrt(1.0 + R[2, 2] - R[0, 0] - R[1, 1])
+        w = (R[1, 0] - R[0, 1]) / s
+        x = (R[0, 2] + R[2, 0]) / s
+        y = (R[1, 2] + R[2, 1]) / s
+        z = 0.25 * s
+
+    return w, x, y, z
+
+
+def body_quaternion_to_threejs(quaternion: Quaternion) -> Tuple[float, float, float, float]:
+    """
+    Convert body-to-NED quaternion to Three.js world-frame quaternion.
+
+    Three.js world: X=East, Y=Up, Z=North.
+    """
+    R_body_to_ned = quaternion.to_dcm()
+    R_body_to_threejs = NED_TO_THREEJS @ R_body_to_ned @ NED_TO_THREEJS.T
+    return rotation_matrix_to_quaternion(R_body_to_threejs)
+

@@ -25,6 +25,8 @@ except ImportError:
 
 from .state import AircraftState, ControlInputs
 from .dynamics import FlightDynamics
+from .intruders import IntruderManager
+from .frames import body_quaternion_to_threejs, ned_position_to_threejs
 
 
 class StateEncoder(json.JSONEncoder):
@@ -40,68 +42,26 @@ class StateEncoder(json.JSONEncoder):
         return super().default(obj)
 
 
-def state_to_message(state: AircraftState, forces_moments=None, crash_state=None) -> str:
+def state_to_message(state: AircraftState, forces_moments=None, crash_state=None, intruder_manager=None) -> str:
     """
     Convert aircraft state to JSON message for frontend.
-    
+
     Returns position, quaternion, and derived values for Three.js.
+    Includes ownship and intruder states.
     """
     phi, theta, psi = state.euler_angles
-    
-    # Get rotation matrix from NED body frame quaternion
-    R_body_to_ned = state.quaternion.to_dcm()
-    
-    # Transform rotation matrix to Three.js world coordinates
-    # NED: X=North, Y=East, Z=Down
-    # Three.js: X=East, Y=Up, Z=North
-    # Transformation matrix: [E, -D, N] = [0 1 0; 0 0 -1; 1 0 0] * [N, E, D]
-    P = np.array([
-        [0, 1, 0],   # Three.js X = NED Y (East)
-        [0, 0, -1],  # Three.js Y = -NED Z (Up)
-        [1, 0, 0]    # Three.js Z = NED X (North)
-    ])
-    
-    # Transform the rotation matrix: R_threejs = P * R_ned * P^T
-    R_body_to_threejs = P @ R_body_to_ned @ P.T
-    
-    # Convert rotation matrix back to quaternion
-    # Using Shepperd's method for numerical stability
-    trace = np.trace(R_body_to_threejs)
-    
-    if trace > 0:
-        s = 0.5 / np.sqrt(trace + 1.0)
-        qw = 0.25 / s
-        qx = (R_body_to_threejs[2, 1] - R_body_to_threejs[1, 2]) * s
-        qy = (R_body_to_threejs[0, 2] - R_body_to_threejs[2, 0]) * s
-        qz = (R_body_to_threejs[1, 0] - R_body_to_threejs[0, 1]) * s
-    elif R_body_to_threejs[0, 0] > R_body_to_threejs[1, 1] and R_body_to_threejs[0, 0] > R_body_to_threejs[2, 2]:
-        s = 2.0 * np.sqrt(1.0 + R_body_to_threejs[0, 0] - R_body_to_threejs[1, 1] - R_body_to_threejs[2, 2])
-        qw = (R_body_to_threejs[2, 1] - R_body_to_threejs[1, 2]) / s
-        qx = 0.25 * s
-        qy = (R_body_to_threejs[0, 1] + R_body_to_threejs[1, 0]) / s
-        qz = (R_body_to_threejs[0, 2] + R_body_to_threejs[2, 0]) / s
-    elif R_body_to_threejs[1, 1] > R_body_to_threejs[2, 2]:
-        s = 2.0 * np.sqrt(1.0 + R_body_to_threejs[1, 1] - R_body_to_threejs[0, 0] - R_body_to_threejs[2, 2])
-        qw = (R_body_to_threejs[0, 2] - R_body_to_threejs[2, 0]) / s
-        qx = (R_body_to_threejs[0, 1] + R_body_to_threejs[1, 0]) / s
-        qy = 0.25 * s
-        qz = (R_body_to_threejs[1, 2] + R_body_to_threejs[2, 1]) / s
-    else:
-        s = 2.0 * np.sqrt(1.0 + R_body_to_threejs[2, 2] - R_body_to_threejs[0, 0] - R_body_to_threejs[1, 1])
-        qw = (R_body_to_threejs[1, 0] - R_body_to_threejs[0, 1]) / s
-        qx = (R_body_to_threejs[0, 2] + R_body_to_threejs[2, 0]) / s
-        qy = (R_body_to_threejs[1, 2] + R_body_to_threejs[2, 1]) / s
-        qz = 0.25 * s
-    
+    pos_x, pos_y, pos_z = ned_position_to_threejs(state.position)
+    qw, qx, qy, qz = body_quaternion_to_threejs(state.quaternion)
+
     data = {
         'type': 'state',
         'time': state.time,
         
         # Position (NED -> Three.js: X=East, Y=Up, Z=North)
         'position': {
-            'x': state.p_east,
-            'y': -state.p_down,  # Up is positive in Three.js
-            'z': state.p_north
+            'x': pos_x,
+            'y': pos_y,
+            'z': pos_z,
         },
         
         # Quaternion in Three.js frame
@@ -153,6 +113,10 @@ def state_to_message(state: AircraftState, forces_moments=None, crash_state=None
         }
         data['moments'] = forces_moments.moment.tolist()
     
+    # Add intruder states if available
+    if intruder_manager is not None:
+        data['intruders'] = intruder_manager.get_intruder_states()
+
     # Add crash state if available
     if crash_state is not None:
         data['crash'] = {
@@ -181,25 +145,30 @@ class SimulationServer:
     def __init__(
         self,
         dynamics: FlightDynamics,
+        intruder_manager: Optional[IntruderManager] = None,
         host: str = "localhost",
         port: int = 8765,
-        update_rate: float = 60.0  # Hz
+        update_rate: Optional[float] = None  # Hz; defaults to 1/dt (matches physics)
     ):
         if not HAS_WEBSOCKETS:
             raise ImportError("websockets library required. Run: pip install websockets")
-        
+
         self.dynamics = dynamics
+        self.intruder_manager = intruder_manager
         self.host = host
         self.port = port
+        if update_rate is None:
+            update_rate = 1.0 / dynamics.sim_config.dt
+        self.update_rate = update_rate
         self.update_interval = 1.0 / update_rate
-        
+
         self.clients: set = set()
         self.running = False
         self.paused = False
-        
+
         # Control input callback
         self.control_callback: Optional[Callable[[Dict], ControlInputs]] = None
-        
+
         # External control inputs (from WebSocket clients)
         self.external_controls: Optional[ControlInputs] = None
     
@@ -210,9 +179,10 @@ class SimulationServer:
         
         # Send initial state
         msg = state_to_message(
-            self.dynamics.state, 
+            self.dynamics.state,
             self.dynamics.forces_moments,
-            self.dynamics.crash_state
+            self.dynamics.crash_state,
+            self.intruder_manager
         )
         await websocket.send(msg)
     
@@ -279,23 +249,33 @@ class SimulationServer:
     async def simulation_loop(self):
         """Main simulation loop that steps physics and broadcasts state."""
         self.running = True
-        
+
         while self.running:
             if not self.paused:
                 # Get controls (external or default)
                 controls = self.external_controls or self.dynamics.controls
-                
+
                 # Step simulation
                 self.dynamics.step(controls)
-                
-                # Broadcast state
+
+                # Update intruders if manager exists
+                if self.intruder_manager is not None:
+                    # Check if we should spawn new intruders
+                    if self.intruder_manager.should_spawn_intruder(self.update_interval, self.dynamics.state):
+                        self.intruder_manager.spawn_intruder(self.dynamics.state)
+
+                    # Update all intruders
+                    self.intruder_manager.update_intruders(self.update_interval, self.dynamics.state)
+
+                # Broadcast state (ownship + intruders)
                 msg = state_to_message(
-                    self.dynamics.state, 
+                    self.dynamics.state,
                     self.dynamics.forces_moments,
-                    self.dynamics.crash_state
+                    self.dynamics.crash_state,
+                    self.intruder_manager
                 )
                 await self.broadcast(msg)
-            
+
             # Wait for next update
             await asyncio.sleep(self.update_interval)
     
@@ -334,15 +314,17 @@ def serve_frontend(directory: str, port: int = 8080):
 def run_with_visualization(
     dynamics: FlightDynamics,
     frontend_dir: Optional[str] = None,
+    intruder_manager: Optional[IntruderManager] = None,
     ws_port: int = 8765,
     http_port: int = 8080
 ):
     """
     Run simulation with visualization server.
-    
+
     Args:
         dynamics: FlightDynamics instance
         frontend_dir: Path to frontend files (optional)
+        intruder_manager: IntruderManager instance for spawning intruders (optional)
         ws_port: WebSocket port
         http_port: HTTP port for frontend
     """
@@ -356,6 +338,6 @@ def run_with_visualization(
         http_thread.start()
     
     # Run WebSocket server
-    server = SimulationServer(dynamics, port=ws_port)
+    server = SimulationServer(dynamics, intruder_manager, port=ws_port)
     server.run()
 

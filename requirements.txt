@@ -13,8 +13,8 @@ matplotlib>=3.7.0
 
 # For DAA model integration
 torch>=2.0.0
+pymavlink>=2.4.41
 
 # Testing
 pytest>=7.0.0
 pytest-asyncio>=0.21.0
-
