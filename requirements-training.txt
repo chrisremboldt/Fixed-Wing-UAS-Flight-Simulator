@@ -1,0 +1,5 @@
+# Optional deps for full training-fidelity rendering (CUDA machine)
+# Install: pip install -r requirements-training.txt
+
+pybind11>=2.12.0
+git+https://github.com/NVlabs/nvdiffrast.git

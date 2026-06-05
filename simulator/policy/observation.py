@@ -10,6 +10,7 @@ import numpy as np
 from ..dynamics import FlightDynamics
 from ..intruders import IntruderManager
 from .rendering import CPUPixelRenderer, CameraConfig
+from .training_render import TrainingPixelRenderer, TrainingRenderConfig, create_policy_renderer
 
 
 @dataclass
@@ -19,6 +20,8 @@ class ObservationSpec:
     image_size: tuple[int, int] = (128, 128)
     channels: int = 3
     fov_deg: float = 90.0
+    renderer_backend: str = 'training'  # auto | training | gpu | legacy
+    render_device: str = 'cpu'
 
 
 class PixelObservationBuilder:
@@ -27,10 +30,12 @@ class PixelObservationBuilder:
     def __init__(self, spec: Optional[ObservationSpec] = None):
         self.spec = spec or ObservationSpec()
         size = self.spec.image_size[0]
-        self.renderer = CPUPixelRenderer(CameraConfig(
+        self.renderer = create_policy_renderer(
+            backend=self.spec.renderer_backend,
             img_size=size,
             fov_deg=self.spec.fov_deg,
-        ))
+            device=self.spec.render_device,
+        )
 
     def build(
         self,

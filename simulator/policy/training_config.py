@@ -1,0 +1,26 @@
+"""Training-fidelity presets aligned with scratch_built_daa."""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+
+
+@dataclass(frozen=True)
+class TrainingFidelityConfig:
+    """Parameters matching the RL training environment defaults."""
+
+    dt: float = 0.02
+    img_size: int = 128
+    fov_deg: float = 90.0
+    max_intruders: int = 5
+    spawn_rate: float = 0.2
+    renderer_backend: str = 'training'  # auto | training | gpu | legacy
+    throttle_mode: str = 'clamp'  # warp clamps throttle to [0, 1]
+    policy_device: str = 'cpu'
+    use_trim_assist: bool = True  # hold cruise throttle unless --full-policy
+    deterministic_policy: bool = True
+    cruise_speed_mps: float = 40.0
+
+    @classmethod
+    def defaults(cls) -> 'TrainingFidelityConfig':
+        return cls()

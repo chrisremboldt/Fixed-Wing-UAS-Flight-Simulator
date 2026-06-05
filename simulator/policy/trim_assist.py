@@ -120,9 +120,19 @@ class TrimAssistedModelPolicy:
         trim_controls: ControlInputs,
         device: str = 'cpu',
         config: Optional[TrimAssistConfig] = None,
+        renderer_backend: str = 'training',
+        throttle_mode: str = 'symmetric',
+        render_device: str = 'cpu',
     ) -> 'TrimAssistedModelPolicy':
         return cls(
-            ModelPolicy(checkpoint, device=device, deterministic=True),
+            ModelPolicy(
+                checkpoint,
+                device=device,
+                deterministic=True,
+                renderer_backend=renderer_backend,
+                render_device=render_device,
+                throttle_mode=throttle_mode,
+            ),
             trim_controls,
             config=config,
         )
@@ -137,7 +147,11 @@ class TrimAssistedModelPolicy:
             return self.trim_controls
 
         action = self.model_policy.predict_action(dynamics, intruder_manager)
-        policy_controls = training_action_to_controls(action, dynamics.aircraft)
+        policy_controls = training_action_to_controls(
+            action,
+            dynamics.aircraft,
+            throttle_mode=self.model_policy.throttle_mode,
+        )
         return blend_trim_and_policy(
             self.trim_controls,
             policy_controls,

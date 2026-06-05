@@ -83,11 +83,17 @@ Checkpoint architecture and training env live in `drones/scratch_built_daa`. Thi
 # Verify checkpoint loads (pytest)
 python -m pytest tests/test_policy.py -q
 
-# Headless closed-loop eval (trim-assisted by default — stable in this sim)
+# Headless closed-loop eval (trim-assisted, training-matched renderer)
 python run_policy_eval.py --policy final_model.pt --duration 120 --seed 42
 
-# Raw policy output (training-faithful but unstable here until render/physics parity)
-python run_policy_eval.py --policy final_model.pt --full-policy --duration 30
+# Training fidelity: 50 Hz, training init (500–1500 m, 40 m/s), renderer, clamp throttle
+python run_policy_eval.py --policy final_model.pt --training-fidelity --duration 120 --seed 42
+
+# Full closed-loop (no trim assist; needs CUDA GPU renderer + Warp physics for stability)
+python run_policy_eval.py --policy final_model.pt --training-fidelity --full-policy --duration 30
+
+# Optional GPU renderer on CUDA host: pip install -r requirements-training.txt
+python run_policy_eval.py --policy final_model.pt --training-fidelity --renderer gpu --render-device cuda:0
 
 # Or via main entrypoint
 python -m simulator.main --policy final_model.pt --duration 120
@@ -96,7 +102,9 @@ python -m simulator.main --policy final_model.pt --duration 120
 python run_px4_bridge.py --enable-intruders --policy final_model.pt
 ```
 
-**Note:** Training used GPU nvdiffrast rendering and Warp physics. Expect sim-to-sim gap until render/physics are aligned further. Native eval: `drones/scratch_built_daa/evaluate_model.py` (requires CUDA + nvdiffrast).
+**Training fidelity stack:** `TrainingPixelRenderer` (CPU mesh + sky parity), optional `NvdiffrastPolicyRenderer`, `TrainingFidelityConfig`, and training-matched initial state. Trim assist holds cruise throttle so DAA maneuvers are testable before full physics transfer.
+
+**Remaining gap vs training:** Warp simplified aerodynamics and nvdiffrast GPU pixels. Native eval: `drones/scratch_built_daa/evaluate_model.py` (CUDA + nvdiffrast).
 
 ## 📊 Validation & Tuning Workflow
 

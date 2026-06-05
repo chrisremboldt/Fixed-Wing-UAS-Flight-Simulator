@@ -18,7 +18,13 @@ from simulator.dynamics import FlightDynamics, SimulationConfig
 from simulator.environment import Environment
 from simulator.intruders import IntruderConfig, IntruderManager
 from simulator.main import create_default_aircraft
-from simulator.policy import ModelPolicy, TrimAssistedModelPolicy, TrimAssistConfig
+from simulator.policy import (
+    ModelPolicy,
+    TrainingFidelityConfig,
+    TrimAssistedModelPolicy,
+    TrimAssistConfig,
+    apply_training_initial_state,
+)
 from simulator.trim import TrimCondition, compute_trim
 
 NMAC_DISTANCE_M = 152.4  # 500 ft
@@ -40,18 +46,43 @@ def run_evaluation(args: argparse.Namespace) -> int:
     print('DAA Policy Evaluation (UAS Sim)')
     print('=' * 70)
     print(f'Model: {args.policy}')
-    print(f'Duration: {args.duration}s | Seed: {args.seed} | Device: {args.device}')
+    print(f'Duration: {args.duration}s | dt={args.dt}s | Seed: {args.seed}')
+    print(f'Policy device: {args.device} | Renderer: {args.renderer}')
+    if args.training_fidelity and args.full_policy:
+        print('Mode: training fidelity + full policy (Warp-like closed loop)')
+    elif args.training_fidelity:
+        print('Mode: training fidelity (50Hz, training renderer, trim-assisted)')
+    elif args.full_policy:
+        print('Mode: full policy (trim assist off)')
+    else:
+        print('Mode: trim-assisted (default)')
 
     aircraft = create_default_aircraft()
     environment = Environment()
     sim_config = SimulationConfig(dt=args.dt)
     dynamics = FlightDynamics(aircraft, environment, sim_config)
 
-    trim = compute_trim(TrimCondition(airspeed=25.0, altitude=100.0), aircraft, environment)
-    if trim.success:
-        dynamics.reset(trim.state)
+    tf = TrainingFidelityConfig.defaults() if args.training_fidelity else None
+    cruise_speed = tf.cruise_speed_mps if tf else 25.0
+    cruise_altitude = 1000.0 if tf else 100.0
+
+    if args.training_fidelity:
+        apply_training_initial_state(dynamics, args.seed)
+        trim = compute_trim(
+            TrimCondition(airspeed=cruise_speed, altitude=cruise_altitude),
+            aircraft,
+            environment,
+        )
     else:
-        dynamics.reset()
+        trim = compute_trim(
+            TrimCondition(airspeed=cruise_speed, altitude=cruise_altitude),
+            aircraft,
+            environment,
+        )
+        if trim.success:
+            dynamics.reset(trim.state)
+        else:
+            dynamics.reset()
 
     intruder_config = IntruderConfig(
         spawn_rate=args.spawn_rate,
@@ -67,6 +98,9 @@ def run_evaluation(args: argparse.Namespace) -> int:
             args.policy,
             device=args.device,
             deterministic=not args.stochastic,
+            renderer_backend=args.renderer,
+            render_device=args.render_device,
+            throttle_mode=args.throttle_mode,
         )
         get_controls = lambda: policy.action_to_controls(
             policy.predict_action(dynamics, intruder_manager),
@@ -84,6 +118,9 @@ def run_evaluation(args: argparse.Namespace) -> int:
                 max_authority=args.max_authority,
                 hold_trim_throttle=not args.policy_throttle,
             ),
+            renderer_backend=args.renderer,
+            throttle_mode=args.throttle_mode,
+            render_device=args.render_device,
         )
         get_controls = lambda: assisted.compute_controls(dynamics, intruder_manager)
 
@@ -129,7 +166,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description='Evaluate DAA policy in UAS sim')
     parser.add_argument('--policy', type=str, default='final_model.pt', help='Checkpoint path')
     parser.add_argument('--duration', type=float, default=120.0, help='Episode length (s)')
-    parser.add_argument('--dt', type=float, default=0.01, help='Physics timestep')
+    parser.add_argument('--dt', type=float, default=None, help='Physics timestep (default 0.01, 0.02 with --training-fidelity)')
     parser.add_argument('--seed', type=int, default=42)
     parser.add_argument('--device', type=str, default='cpu')
     parser.add_argument('--spawn-rate', type=float, default=0.15, dest='spawn_rate')
@@ -159,7 +196,54 @@ def main() -> None:
         action='store_true',
         help='Let policy command throttle (default: hold trim throttle)',
     )
+    parser.add_argument(
+        '--training-fidelity',
+        action='store_true',
+        help='Match scratch_built_daa: dt=0.02, training init, renderer, clamp throttle (add --full-policy for raw controls)',
+    )
+    parser.add_argument(
+        '--renderer',
+        type=str,
+        default=None,
+        choices=['auto', 'training', 'gpu', 'legacy'],
+        help='Observation renderer backend',
+    )
+    parser.add_argument(
+        '--render-device',
+        type=str,
+        default='cpu',
+        dest='render_device',
+        help='Device for gpu renderer backend (cuda:0 when available)',
+    )
+    parser.add_argument(
+        '--throttle-mode',
+        type=str,
+        default=None,
+        choices=['symmetric', 'clamp'],
+        dest='throttle_mode',
+        help='Map policy throttle: symmetric (a+1)/2 or clamp [0,1] like Warp physics',
+    )
     args = parser.parse_args()
+
+    if args.training_fidelity:
+        tf = TrainingFidelityConfig.defaults()
+        if args.dt is None:
+            args.dt = tf.dt
+        if args.renderer is None:
+            args.renderer = tf.renderer_backend
+        if args.throttle_mode is None:
+            args.throttle_mode = tf.throttle_mode
+        if args.spawn_rate == 0.15:
+            args.spawn_rate = tf.spawn_rate
+        if args.render_device == 'cpu' and tf.policy_device.startswith('cuda'):
+            args.render_device = tf.policy_device
+    else:
+        if args.dt is None:
+            args.dt = 0.01
+        if args.renderer is None:
+            args.renderer = 'training'
+        if args.throttle_mode is None:
+            args.throttle_mode = 'symmetric'
 
     if not Path(args.policy).exists():
         raise SystemExit(f'Checkpoint not found: {args.policy}')

@@ -41,11 +41,18 @@ class ModelPolicy:
         deterministic: bool = True,
         control_mode: Literal['absolute', 'blend'] = 'absolute',
         blend_alpha: float = 1.0,
+        renderer_backend: str = 'training',
+        render_device: str = 'cpu',
+        throttle_mode: str = 'symmetric',
     ):
         if not HAS_TORCH:
             raise ImportError('torch is required for ModelPolicy')
 
-        self.spec = spec or ObservationSpec()
+        self.spec = spec or ObservationSpec(
+            renderer_backend=renderer_backend,
+            render_device=render_device,
+        )
+        self.throttle_mode = throttle_mode
         self.device = torch.device(device)
         self.deterministic = deterministic
         self.control_mode = control_mode
@@ -75,7 +82,9 @@ class ModelPolicy:
         action: np.ndarray,
         aircraft: AircraftConfig,
     ) -> ControlInputs:
-        return training_action_to_controls(action, aircraft)
+        return training_action_to_controls(
+            action, aircraft, throttle_mode=self.throttle_mode,
+        )
 
     def intervene(
         self,

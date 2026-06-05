@@ -5,6 +5,13 @@ from .architecture import ImpalaCNN, PufferPolicy, load_policy_checkpoint
 from .model_policy import ModelPolicy
 from .observation import ObservationSpec, PixelObservationBuilder, BearingMapObservationBuilder
 from .rendering import CPUPixelRenderer, CameraConfig
+from .training_config import TrainingFidelityConfig
+from .training_init import (
+    TRAINING_CRUISE_SPEED_MPS,
+    apply_training_initial_state,
+    sample_training_initial_state,
+)
+from .training_render import TrainingPixelRenderer, TrainingRenderConfig, create_policy_renderer
 from .trim_assist import (
     TrimAssistConfig,
     TrimAssistedModelPolicy,
@@ -15,6 +22,13 @@ from .trim_assist import (
 __all__ = [
     'CameraConfig',
     'CPUPixelRenderer',
+    'TrainingFidelityConfig',
+    'TRAINING_CRUISE_SPEED_MPS',
+    'apply_training_initial_state',
+    'sample_training_initial_state',
+    'TrainingPixelRenderer',
+    'TrainingRenderConfig',
+    'create_policy_renderer',
     'ImpalaCNN',
     'PufferPolicy',
     'ModelPolicy',
