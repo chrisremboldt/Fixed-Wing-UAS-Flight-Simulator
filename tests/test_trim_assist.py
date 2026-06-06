@@ -38,6 +38,30 @@ def test_blend_holds_trim_throttle():
     assert blended.aileron == 0.15
 
 
+def test_baseline_uses_trim_until_policy_engages():
+    aircraft = AircraftConfig()
+    env = Environment()
+    trim = compute_trim(TrimCondition(airspeed=40.0, altitude=1000.0), aircraft, env)
+    assert trim.success
+
+    assisted = TrimAssistedModelPolicy(
+        model_policy=MagicMock(),
+        trim_controls=trim.controls,
+        recovery_state=trim.state,
+    )
+    dyn = FlightDynamics(aircraft, env, SimulationConfig(dt=0.02))
+    dyn.reset(trim.state)
+
+    baseline = assisted._baseline_controls(
+        dyn,
+        raw_authority=0.0,
+        smoothed_authority=0.0,
+    )
+    assert baseline.elevator == trim.controls.elevator
+    assert baseline.aileron == trim.controls.aileron
+    assert not assisted._recovery_active
+
+
 def test_recovery_baseline_differs_from_static_trim_when_disturbed():
     aircraft = AircraftConfig()
     env = Environment()
@@ -57,14 +81,11 @@ def test_recovery_baseline_differs_from_static_trim_when_disturbed():
         time=0.0,
     )
 
-    recovery_controls = assisted._baseline_controls(
-        FlightDynamics(aircraft, env, SimulationConfig(dt=0.02)),
-    )
-    assisted.recovery.reset()
+    assisted._recovery_active = True
     recovery_controls = assisted.recovery.update(pitched)
 
-    assert recovery_controls.elevator != trim.controls.elevator
-    assert recovery_controls.aileron != trim.controls.aileron
+    assert recovery_controls.elevator > trim.controls.elevator
+    assert recovery_controls.aileron > trim.controls.aileron
 
 
 def test_trim_assisted_survives_short_run():

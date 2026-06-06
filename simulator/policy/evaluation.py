@@ -210,16 +210,30 @@ def _setup_episode(
     episode_seed = config.scenario.seed if config.scenario and config.scenario.seed is not None else seed
 
     cruise_speed = TrainingFidelityConfig.defaults().cruise_speed_mps if config.training_fidelity else 25.0
-    cruise_altitude = 1000.0 if config.training_fidelity else 100.0
 
+    training_position = None
+    training_heading = None
     if config.training_fidelity:
         apply_training_initial_state(dynamics, episode_seed)
+        training_position = dynamics.state.position.copy()
+        training_heading = dynamics.state.psi
+    cruise_altitude = dynamics.state.altitude if config.training_fidelity else 100.0
     trim = compute_trim(
-        TrimCondition(airspeed=cruise_speed, altitude=cruise_altitude),
+        TrimCondition(
+            airspeed=cruise_speed,
+            altitude=cruise_altitude,
+            heading=training_heading or 0.0,
+        ),
         aircraft,
         environment,
     )
-    if not config.training_fidelity:
+    if trim.success and config.training_fidelity and training_position is not None:
+        trimmed = trim.state
+        trimmed.position = training_position.copy()
+        trimmed.time = 0.0
+        dynamics.reset(trimmed)
+        dynamics.controls = trim.controls
+    elif not config.training_fidelity:
         if trim.success:
             dynamics.reset(trim.state)
         else:

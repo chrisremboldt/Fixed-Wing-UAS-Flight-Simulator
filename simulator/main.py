@@ -473,8 +473,17 @@ def main():
         default=42,
         help='Random seed for policy/intruder spawning',
     )
+    parser.add_argument(
+        '--flight-debug',
+        action='store_true',
+        help='Log trim-assist authority, controls, and attitude every ~0.25s',
+    )
     
     args = parser.parse_args()
+
+    if args.flight_debug:
+        import os
+        os.environ['UAS_FLIGHT_DEBUG'] = '1'
     
     # Load aircraft
     if args.aircraft:

@@ -18,7 +18,8 @@ from .evaluation import min_intruder_distance
 from .model_policy import ModelPolicy
 from .training_config import TrainingFidelityConfig
 from .training_init import apply_training_initial_state
-from .trim_assist import TrimAssistConfig, TrimAssistedModelPolicy, compute_threat_authority
+from .flight_debug import FlightDebugLogger, configure_flight_debug, flight_debug_enabled
+from .trim_assist import TrimAssistConfig, TrimAssistedModelPolicy
 
 
 @dataclass
@@ -68,17 +69,36 @@ class InteractivePolicyController:
         )
 
         cruise_speed = tf.cruise_speed_mps if config.training_fidelity else 25.0
-        cruise_alt = 1000.0 if config.training_fidelity else 100.0
 
+        training_position = None
+        training_heading = None
         if config.training_fidelity:
             apply_training_initial_state(self.dynamics, seed)
+            training_position = self.dynamics.state.position.copy()
+            training_heading = self.dynamics.state.psi
+
+        cruise_alt = (
+            self.dynamics.state.altitude
+            if config.training_fidelity
+            else 100.0
+        )
 
         trim = compute_trim(
-            TrimCondition(airspeed=cruise_speed, altitude=cruise_alt),
+            TrimCondition(
+                airspeed=cruise_speed,
+                altitude=cruise_alt,
+                heading=training_heading or 0.0,
+            ),
             aircraft,
             environment,
         )
-        if not config.training_fidelity and trim.success:
+        if trim.success and config.training_fidelity and training_position is not None:
+            trimmed = trim.state
+            trimmed.position = training_position.copy()
+            trimmed.time = 0.0
+            self.dynamics.reset(trimmed)
+            self.dynamics.controls = trim.controls
+        elif not config.training_fidelity and trim.success:
             self.dynamics.reset(trim.state)
             self.dynamics.controls = trim.controls
         elif not config.training_fidelity:
@@ -194,6 +214,7 @@ def build_interactive_policy_setup(
     *,
     seed: int = 42,
     enable_intruders: bool = True,
+    log_startup: bool = True,
 ) -> tuple[FlightDynamics, Optional[IntruderManager], InteractivePolicyController, Callable]:
     """
     Build dynamics, intruders, and policy controller for interactive visualization.
@@ -223,6 +244,21 @@ def build_interactive_policy_setup(
         intruder_manager.random.seed(seed)
         if config.training_fidelity:
             intruder_manager.spawn_initial_intruders(dynamics.state)
+
+        if log_startup and flight_debug_enabled() and controller._trim_assisted is not None:
+            configure_flight_debug()
+            ta = controller._trim_assisted
+            tf = TrainingFidelityConfig.defaults()
+            FlightDebugLogger().log_startup(
+                dynamics=dynamics,
+                trim_altitude=dynamics.state.altitude if config.training_fidelity else 100.0,
+                trim_airspeed=tf.cruise_speed_mps if config.training_fidelity else 25.0,
+                trim_controls=ta.trim_controls,
+                recovery_altitude=ta.recovery.target_altitude,
+                recovery_heading_rad=ta.recovery.target_heading,
+                intruder_manager=intruder_manager,
+                forward_cone_deg=ta.config.forward_cone_deg,
+            )
 
     def controls_provider(dyn: FlightDynamics, mgr: Optional[IntruderManager]):
         return controller.step(dyn, mgr)

@@ -20,6 +20,7 @@ from ..intruders import IntruderManager
 from ..px4_bridge import ControlInterventionPolicy
 from ..state import AircraftState, ControlInputs
 from .actions import training_action_to_controls
+from .flight_debug import FlightDebugLogger, configure_flight_debug
 from .model_policy import ModelPolicy
 
 
@@ -36,6 +37,7 @@ class TrimAssistConfig:
     # When engaged authority is low, recover with PID holds instead of static trim.
     use_recovery_autopilot: bool = True
     authority_smoothing_s: float = 0.35
+    authority_warmup_s: float = 3.0  # hold policy off briefly after spawn/reset
 
 
 def compute_threat_authority(
@@ -111,12 +113,12 @@ class LevelRecoveryController:
         altitude_error = self.target_altitude - state.altitude
 
         pitch_corr = np.clip(
-            self.pitch_kp * (-state.theta) + self.pitch_kd * (-state.q),
+            self.pitch_kp * state.theta + self.pitch_kd * state.q,
             -self.max_surface_correction,
             self.max_surface_correction,
         )
         roll_corr = np.clip(
-            self.roll_kp * (-state.phi) + self.roll_kd * (-state.p),
+            self.roll_kp * state.phi + self.roll_kd * state.p,
             -self.max_surface_correction,
             self.max_surface_correction,
         )
@@ -218,6 +220,9 @@ class TrimAssistedModelPolicy:
         )
         self._smoothed_authority = 0.0
         self._last_authority_time: Optional[float] = None
+        self._recovery_active = False
+        self._flight_log = FlightDebugLogger()
+        configure_flight_debug()
 
     @classmethod
     def from_checkpoint(
@@ -262,9 +267,23 @@ class TrimAssistedModelPolicy:
         self._last_authority_time = sim_time
         return self._smoothed_authority
 
-    def _baseline_controls(self, dynamics: FlightDynamics) -> ControlInputs:
+    def _baseline_controls(
+        self,
+        dynamics: FlightDynamics,
+        *,
+        raw_authority: float,
+        smoothed_authority: float,
+    ) -> ControlInputs:
         if not self.config.use_recovery_autopilot:
             return self.trim_controls
+
+        engage_threshold = 0.05
+        if smoothed_authority > engage_threshold or raw_authority > engage_threshold:
+            self._recovery_active = True
+
+        if not self._recovery_active:
+            return self.trim_controls
+
         return self.recovery.update(dynamics.state)
 
     def compute_controls(
@@ -273,9 +292,26 @@ class TrimAssistedModelPolicy:
         intruder_manager: Optional[IntruderManager],
     ) -> ControlInputs:
         raw_authority = compute_threat_authority(dynamics, intruder_manager, self.config)
+        if dynamics.state.time < self.config.authority_warmup_s:
+            raw_authority = 0.0
         authority = self._smooth_authority(raw_authority, dynamics.state.time)
-        baseline = self._baseline_controls(dynamics)
+        baseline = self._baseline_controls(
+            dynamics,
+            raw_authority=raw_authority,
+            smoothed_authority=authority,
+        )
         if authority <= 1e-6:
+            self._flight_log.maybe_log(
+                dynamics=dynamics,
+                intruder_manager=intruder_manager,
+                raw_authority=raw_authority,
+                smoothed_authority=authority,
+                baseline=baseline,
+                policy_controls=None,
+                output=baseline,
+                action=None,
+                forward_cone_deg=self.config.forward_cone_deg,
+            )
             return baseline
 
         action = self.model_policy.predict_action(dynamics, intruder_manager)
@@ -285,13 +321,25 @@ class TrimAssistedModelPolicy:
             throttle_mode=self.model_policy.throttle_mode,
             surface_scale=self.model_policy.surface_scale,
         )
-        return blend_trim_and_policy(
+        blended = blend_trim_and_policy(
             baseline,
             policy_controls,
             authority,
             hold_trim_throttle=self.config.hold_trim_throttle,
             min_throttle=self.config.min_throttle,
         )
+        self._flight_log.maybe_log(
+            dynamics=dynamics,
+            intruder_manager=intruder_manager,
+            raw_authority=raw_authority,
+            smoothed_authority=authority,
+            baseline=baseline,
+            policy_controls=policy_controls,
+            output=blended,
+            action=action,
+            forward_cone_deg=self.config.forward_cone_deg,
+        )
+        return blended
 
     def intervene(
         self,

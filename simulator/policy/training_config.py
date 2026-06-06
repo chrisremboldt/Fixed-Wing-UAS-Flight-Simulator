@@ -60,7 +60,7 @@ class TrainingFidelityConfig:
             spawn_altitude_offset_std_m=150.0,
             spawn_altitude_abs_min_m=300.0,
             spawn_altitude_abs_max_m=3000.0,
-            initial_spawn_count=3,
+            initial_spawn_count=1,
             spawn_forward_fraction=0.75,
             spawn_forward_cone_deg=55.0,
             spawn_heading_towards_ownship_probability=0.85,
