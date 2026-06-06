@@ -68,7 +68,7 @@ If your PX4 output is already `[0, 1]`, use:
 python run_px4_bridge.py --throttle-unipolar
 ```
 
-## Policy inference (RFC 001 phase 1)
+## Policy inference (RFC 001)
 
 Load a PyTorch checkpoint as a control intervention layer:
 
@@ -76,16 +76,55 @@ Load a PyTorch checkpoint as a control intervention layer:
 python run_px4_bridge.py \
   --connection tcp:127.0.0.1:4560 \
   --enable-intruders \
-  --policy final_model.pt
+  --policy final_model.pt \
+  --training-fidelity
 ```
 
-Uses CPU pixel observations (128×128 RGB) and absolute control mapping from `scratch_built_daa` training. See `docs/rfcs/001-pytorch-policy-integration.md`.
+Training-fidelity mode sets `dt=0.02` (50 Hz) to match the RL training loop.
+
+### Actuator mapping vs training
+
+Training action order: `[throttle, aileron, elevator, rudder]` in `[-1, 1]` after `tanh`.
+
+| Training channel | PX4 HIL channel | Bridge mapping |
+|------------------|-----------------|--------------|
+| throttle | 3 | bipolar `[-1,1]` → `[0,1]` (use `--throttle-unipolar` if PX4 sends `[0,1]`) |
+| aileron | 0 | direct (use `--reverse-aileron` if inverted) |
+| elevator | 1 | direct (use `--reverse-elevator` if inverted) |
+| rudder | 2 | direct (use `--reverse-rudder` if inverted) |
+
+### SITL + policy test procedure
+
+1. Start PX4 SITL with MAVLink TCP on port 4560.
+2. Run the bridge with training fidelity and intruders:
+
+```bash
+python run_px4_bridge.py \
+  --connection tcp:127.0.0.1:4560 \
+  --enable-intruders \
+  --intruder-rate 0.2 \
+  --policy final_model.pt \
+  --training-fidelity \
+  --policy-device cpu
+```
+
+3. Arm and take off in QGC; verify bridge logs show 50 Hz loop.
+4. Confirm aileron/elevator/rudder signs match expected DAA maneuvers (no silent inversion).
+
+Uses CPU pixel observations (128×128 RGB) and trim-assisted control mapping. See `docs/rfcs/001-pytorch-policy-integration.md`.
+
+## Interactive visualization with policy
+
+```bash
+python -m simulator.main --policy final_model.pt --training-fidelity
+```
+
+Opens http://localhost:8080 with policy telemetry overlay (min separation, authority, obs thumbnail).
 
 ## Current Limitations
 
 - `--simple-daa` is geometry-based (no camera model)
-- No camera/image transport bridge yet (next integration step)
-- Policy action scaling not yet validated against training code
+- No camera/image transport over MAVLink yet
 - No direct PX4 parameter auto-configuration
 
 The bridge is designed to be the base for those additions.

@@ -42,7 +42,13 @@ class StateEncoder(json.JSONEncoder):
         return super().default(obj)
 
 
-def state_to_message(state: AircraftState, forces_moments=None, crash_state=None, intruder_manager=None) -> str:
+def state_to_message(
+    state: AircraftState,
+    forces_moments=None,
+    crash_state=None,
+    intruder_manager=None,
+    policy_telemetry: Optional[Dict[str, Any]] = None,
+) -> str:
     """
     Convert aircraft state to JSON message for frontend.
 
@@ -117,6 +123,9 @@ def state_to_message(state: AircraftState, forces_moments=None, crash_state=None
     if intruder_manager is not None:
         data['intruders'] = intruder_manager.get_intruder_states()
 
+    if policy_telemetry is not None:
+        data['policy'] = policy_telemetry
+
     # Add crash state if available
     if crash_state is not None:
         data['crash'] = {
@@ -169,6 +178,12 @@ class SimulationServer:
         # Control input callback
         self.control_callback: Optional[Callable[[Dict], ControlInputs]] = None
 
+        # Policy loop: (dynamics, intruder_manager) -> (controls, telemetry)
+        self.controls_provider: Optional[
+            Callable[[FlightDynamics, Optional[IntruderManager]], tuple[ControlInputs, dict]]
+        ] = None
+        self.last_policy_telemetry: Optional[dict] = None
+
         # External control inputs (from WebSocket clients)
         self.external_controls: Optional[ControlInputs] = None
     
@@ -182,7 +197,8 @@ class SimulationServer:
             self.dynamics.state,
             self.dynamics.forces_moments,
             self.dynamics.crash_state,
-            self.intruder_manager
+            self.intruder_manager,
+            self.last_policy_telemetry,
         )
         await websocket.send(msg)
     
@@ -252,8 +268,15 @@ class SimulationServer:
 
         while self.running:
             if not self.paused:
-                # Get controls (external or default)
-                controls = self.external_controls or self.dynamics.controls
+                if self.controls_provider is not None:
+                    controls, telemetry = self.controls_provider(
+                        self.dynamics,
+                        self.intruder_manager,
+                    )
+                    self.last_policy_telemetry = telemetry
+                else:
+                    self.last_policy_telemetry = None
+                    controls = self.external_controls or self.dynamics.controls
 
                 # Step simulation
                 self.dynamics.step(controls)
@@ -272,7 +295,8 @@ class SimulationServer:
                     self.dynamics.state,
                     self.dynamics.forces_moments,
                     self.dynamics.crash_state,
-                    self.intruder_manager
+                    self.intruder_manager,
+                    self.last_policy_telemetry,
                 )
                 await self.broadcast(msg)
 
@@ -316,7 +340,10 @@ def run_with_visualization(
     frontend_dir: Optional[str] = None,
     intruder_manager: Optional[IntruderManager] = None,
     ws_port: int = 8765,
-    http_port: int = 8080
+    http_port: int = 8080,
+    controls_provider: Optional[
+        Callable[[FlightDynamics, Optional[IntruderManager]], tuple[ControlInputs, dict]]
+    ] = None,
 ):
     """
     Run simulation with visualization server.
@@ -339,5 +366,6 @@ def run_with_visualization(
     
     # Run WebSocket server
     server = SimulationServer(dynamics, intruder_manager, port=ws_port)
+    server.controls_provider = controls_provider
     server.run()
 

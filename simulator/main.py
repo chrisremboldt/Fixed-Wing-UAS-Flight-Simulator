@@ -197,6 +197,65 @@ def run_validation_tests(aircraft: AircraftConfig, verbose: bool = True):
         print("="*60 + "\n")
 
 
+def run_interactive_policy_simulation(
+    aircraft: AircraftConfig,
+    policy_path: str,
+    *,
+    enable_intruders: bool = True,
+    training_fidelity: bool = True,
+    full_policy: bool = False,
+    device: str = 'cpu',
+    seed: int = 42,
+):
+    """Run interactive simulation with DAA policy controlling the aircraft."""
+    from .policy.interactive_policy import (
+        InteractivePolicyConfig,
+        build_interactive_policy_setup,
+    )
+    from .visualization import run_with_visualization
+
+    tf = None
+    if training_fidelity:
+        from .policy import TrainingFidelityConfig
+        tf = TrainingFidelityConfig.defaults()
+
+    config = InteractivePolicyConfig(
+        policy_path=policy_path,
+        device=device,
+        training_fidelity=training_fidelity,
+        full_policy=full_policy,
+        renderer=tf.renderer_backend if tf else 'training',
+        render_device='cpu',
+        surface_scale=tf.surface_scale if tf else 1.0,
+    )
+
+    dynamics, intruder_manager, _controller, controls_provider = build_interactive_policy_setup(
+        aircraft,
+        config,
+        seed=seed,
+        enable_intruders=enable_intruders,
+    )
+
+    frontend_dir = Path(__file__).parent.parent / 'frontend'
+    mode = 'full policy' if full_policy else 'trim-assisted'
+    print('\nStarting policy visualization server...')
+    print(f'Policy: {policy_path} ({mode})')
+    print('Open http://localhost:8080 in your browser')
+    print('WebSocket running on ws://localhost:8765')
+    if enable_intruders:
+        print('Intruders will spawn around your aircraft')
+    print('Press Ctrl+C to stop\n')
+
+    run_with_visualization(
+        dynamics,
+        frontend_dir=str(frontend_dir) if frontend_dir.exists() else None,
+        intruder_manager=intruder_manager,
+        ws_port=8765,
+        http_port=8080,
+        controls_provider=controls_provider,
+    )
+
+
 def run_interactive_simulation(aircraft: AircraftConfig, enable_intruders: bool = True):
     """Run interactive simulation with visualization."""
     from .visualization import run_with_visualization
@@ -403,6 +462,17 @@ def main():
         action='store_true',
         help='Use scratch_built_daa presets for --policy mode',
     )
+    parser.add_argument(
+        '--full-policy',
+        action='store_true',
+        help='Disable trim assist for --policy mode (full closed-loop)',
+    )
+    parser.add_argument(
+        '--seed',
+        type=int,
+        default=42,
+        help='Random seed for policy/intruder spawning',
+    )
     
     args = parser.parse_args()
     
@@ -417,6 +487,16 @@ def main():
     # Run appropriate mode
     if args.validate:
         run_validation_tests(aircraft)
+    elif args.policy and not args.headless:
+        run_interactive_policy_simulation(
+            aircraft,
+            args.policy,
+            enable_intruders=not args.no_intruders,
+            training_fidelity=args.training_fidelity,
+            full_policy=args.full_policy,
+            device=args.device,
+            seed=args.seed,
+        )
     elif args.policy:
         run_policy_simulation(
             aircraft,

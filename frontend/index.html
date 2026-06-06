@@ -424,6 +424,47 @@
             margin-top: 2px;
         }
         
+        /* Policy overlay (issue #11) */
+        #policy-panel {
+            top: 220px;
+            left: 20px;
+            min-width: 180px;
+            display: none;
+        }
+
+        #policy-panel.active {
+            display: block;
+        }
+
+        #policy-thumbnail {
+            width: 64px;
+            height: 64px;
+            image-rendering: pixelated;
+            border: 1px solid var(--border-subtle);
+            margin-top: 8px;
+            background: #111;
+        }
+
+        .policy-authority-bar {
+            height: 6px;
+            background: rgba(255,255,255,0.1);
+            border-radius: 3px;
+            margin-top: 4px;
+            overflow: hidden;
+        }
+
+        .policy-authority-fill {
+            height: 100%;
+            background: var(--accent-green);
+            border-radius: 3px;
+            transition: width 0.1s ease;
+        }
+
+        #joystick.policy-hidden {
+            opacity: 0.35;
+            pointer-events: none;
+        }
+
         /* Connection Status */
         #connection {
             position: absolute;
@@ -626,6 +667,27 @@
         <div class="force-bar"><div class="force-bar-fill gravity" id="force-gravity"></div></div>
     </div>
     
+    <!-- Policy Telemetry -->
+    <div class="hud-panel" id="policy-panel">
+        <h3>DAA Policy</h3>
+        <div class="pfd-row">
+            <span class="pfd-label">Mode</span>
+            <span class="pfd-value" id="policy-mode">—</span>
+        </div>
+        <div class="pfd-row">
+            <span class="pfd-label">Min Sep</span>
+            <span class="pfd-value" id="policy-min-sep">—</span>
+        </div>
+        <div class="pfd-row">
+            <span class="pfd-label">Authority</span>
+            <span class="pfd-value" id="policy-authority">0%</span>
+        </div>
+        <div class="policy-authority-bar">
+            <div class="policy-authority-fill" id="policy-authority-bar" style="width: 0%"></div>
+        </div>
+        <canvas id="policy-thumbnail" width="64" height="64"></canvas>
+    </div>
+
     <!-- Control Display -->
     <div class="hud-panel" id="controls">
         <h3>Controls</h3>
@@ -1317,6 +1379,47 @@
                 document.getElementById('force-gravity').style.width = `${Math.min(100, gravMag / maxForce * 100)}%`;
             }
             
+            // Policy telemetry overlay
+            const policyPanel = document.getElementById('policy-panel');
+            const joystick = document.getElementById('joystick');
+            if (state.policy && state.policy.active) {
+                policyPanel.classList.add('active');
+                joystick.classList.add('policy-hidden');
+                document.getElementById('policy-mode').textContent = state.policy.mode || 'policy';
+                const minSep = state.policy.min_separation_m;
+                document.getElementById('policy-min-sep').textContent =
+                    minSep != null && isFinite(minSep) ? `${minSep.toFixed(0)} m` : '—';
+                const authPct = Math.round((state.policy.authority || 0) * 100);
+                document.getElementById('policy-authority').textContent = `${authPct}%`;
+                document.getElementById('policy-authority-bar').style.width = `${authPct}%`;
+
+                if (state.policy.controls) {
+                    const pc = state.policy.controls;
+                    updateControlBar('ctrl-elevator', pc.elevator, 0.44);
+                    updateControlBar('ctrl-aileron', pc.aileron, 0.44);
+                    updateControlBar('ctrl-rudder', pc.rudder, 0.44);
+                    document.getElementById('ctrl-throttle').style.width = `${pc.throttle * 100}%`;
+                }
+
+                if (state.policy.obs_thumbnail_b64 && state.policy.obs_thumbnail_size) {
+                    const size = state.policy.obs_thumbnail_size;
+                    const raw = atob(state.policy.obs_thumbnail_b64);
+                    const canvas = document.getElementById('policy-thumbnail');
+                    const ctx = canvas.getContext('2d');
+                    const imgData = ctx.createImageData(size, size);
+                    for (let i = 0, j = 0; i < raw.length && j < imgData.data.length; i += 3, j += 4) {
+                        imgData.data[j] = raw.charCodeAt(i);
+                        imgData.data[j + 1] = raw.charCodeAt(i + 1);
+                        imgData.data[j + 2] = raw.charCodeAt(i + 2);
+                        imgData.data[j + 3] = 255;
+                    }
+                    ctx.putImageData(imgData, 0, 0);
+                }
+            } else {
+                policyPanel.classList.remove('active');
+                joystick.classList.remove('policy-hidden');
+            }
+
             // === CRASH DETECTION UI ===
             const warningOverlay = document.getElementById('warning-overlay');
             const warningBanner = document.getElementById('warning-banner');

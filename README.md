@@ -102,8 +102,11 @@ python run_policy_eval.py --training-fidelity --scenario crossing --episodes 20 
 # Optional GPU renderer on CUDA host: pip install -r requirements-training.txt
 python run_policy_eval.py --policy final_model.pt --training-fidelity --renderer gpu --render-device cuda:0
 
-# Or via main entrypoint
-python -m simulator.main --policy final_model.pt --duration 120
+# Interactive viz with policy (WebSocket + Three.js overlay)
+python -m simulator.main --policy final_model.pt --training-fidelity
+
+# Or headless via main entrypoint
+python -m simulator.main --policy final_model.pt --headless --duration 120 --training-fidelity
 
 # PX4 bridge with policy override (absolute controls)
 python run_px4_bridge.py --enable-intruders --policy final_model.pt

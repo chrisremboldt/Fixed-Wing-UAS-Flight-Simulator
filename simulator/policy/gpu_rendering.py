@@ -1,7 +1,8 @@
 """
 Optional nvdiffrast renderer (CUDA) for training pixel parity.
 
-Falls back unavailable when nvdiffrast or CUDA is missing.
+Uses the vendored TrainingPixelRenderer (CPU) when nvdiffrast/CUDA is unavailable.
+No external repo path imports — mesh data lives in mesh_data.py.
 """
 
 from __future__ import annotations
@@ -16,7 +17,11 @@ from .coords import ned_position_to_training, ned_quaternion_to_training
 
 
 class NvdiffrastPolicyRenderer:
-    """Single-environment wrapper around scratch_built_daa GPURenderer."""
+    """
+    Policy observation renderer with optional CUDA nvdiffrast backend.
+
+    Falls back to TrainingPixelRenderer on Mac/CPU hosts.
+    """
 
     def __init__(
         self,
@@ -24,40 +29,30 @@ class NvdiffrastPolicyRenderer:
         fov_deg: float = 90.0,
         device: str = 'cuda:0',
     ):
-        import torch
-
         from .training_render import TrainingPixelRenderer, TrainingRenderConfig
 
         self._fallback = TrainingPixelRenderer(
             TrainingRenderConfig(img_size=img_size, fov_deg=fov_deg),
         )
         self._device = device
-        self._torch = torch
         self._gpu_renderer = None
+        self._init_error: str | None = None
 
         try:
             import importlib.util
             if importlib.util.find_spec('nvdiffrast') is None:
                 raise ImportError('nvdiffrast not installed')
 
-            # Import training GPURenderer from sibling repo if vendored path exists
-            import sys
-            from pathlib import Path
-
-            training_env = Path(__file__).resolve().parents[3] / 'drones' / 'scratch_built_daa'
-            if training_env.exists() and str(training_env) not in sys.path:
-                sys.path.insert(0, str(training_env))
-
-            from env.rendering import GPURenderer  # type: ignore
+            import torch
+            from .nvdiffrast_renderer import VendoredGPURenderer
 
             if device.startswith('cuda') and not torch.cuda.is_available():
                 raise RuntimeError('CUDA not available')
 
-            self._gpu_renderer = GPURenderer(
-                num_envs=1,
+            self._gpu_renderer = VendoredGPURenderer(
                 img_size=img_size,
                 device=device,
-                enable_edgetam=False,
+                fov_deg=fov_deg,
             )
         except Exception as exc:
             self._init_error = str(exc)
@@ -72,9 +67,18 @@ class NvdiffrastPolicyRenderer:
                 return False
             if device.startswith('cuda') and not torch.cuda.is_available():
                 return False
+            from .nvdiffrast_renderer import VendoredGPURenderer  # noqa: F401
             return True
         except Exception:
             return False
+
+    @property
+    def using_gpu(self) -> bool:
+        return self._gpu_renderer is not None
+
+    @property
+    def init_error(self) -> str | None:
+        return self._init_error
 
     def render(
         self,
@@ -84,7 +88,8 @@ class NvdiffrastPolicyRenderer:
         if self._gpu_renderer is None:
             return self._fallback.render(dynamics, intruder_manager)
 
-        torch = self._torch
+        import torch
+
         ego_pos = ned_position_to_training(dynamics.state.position)
         ego_quat = ned_quaternion_to_training(dynamics.state.quaternion)
 
@@ -109,7 +114,7 @@ class NvdiffrastPolicyRenderer:
                     dtype=torch.float32,
                 )
 
-        images, _, _ = self._gpu_renderer.render_batch(
+        images = self._gpu_renderer.render_batch(
             ego_positions,
             ego_quaternions,
             intruder_positions,

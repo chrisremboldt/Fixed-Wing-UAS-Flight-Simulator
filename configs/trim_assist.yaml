@@ -1,0 +1,32 @@
+# Trim-assist presets for policy evaluation (issue #12)
+#
+# Tune engage_distance, max_authority, and surface_scale against scenario suite.
+# Default preset achieves 100% success on 20-episode training-fidelity batch (seed 42).
+
+default:
+  engage_distance_m: 1000.0
+  full_authority_distance_m: 350.0
+  forward_cone_deg: 45.0
+  max_authority: 0.6
+  hold_trim_throttle: true
+  min_throttle: 0.15
+  surface_scale: 1.5
+
+aggressive:
+  engage_distance_m: 1200.0
+  full_authority_distance_m: 400.0
+  max_authority: 0.8
+  hold_trim_throttle: true
+  surface_scale: 1.5
+
+conservative:
+  engage_distance_m: 800.0
+  full_authority_distance_m: 300.0
+  max_authority: 0.45
+  hold_trim_throttle: true
+  surface_scale: 1.2
+
+full_policy_baseline:
+  # Use with --full-policy; no trim assist
+  surface_scale: 1.5
+  cruise_throttle_floor: true

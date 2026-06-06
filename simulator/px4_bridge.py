@@ -445,14 +445,34 @@ class PX4MavlinkBridge:
             time.sleep(max(0.0, dt - elapsed))
 
 
-def build_default_dynamics(aircraft: AircraftConfig) -> tuple[FlightDynamics, Environment]:
+def build_default_dynamics(
+    aircraft: AircraftConfig,
+    *,
+    training_fidelity: bool = False,
+    seed: int = 42,
+) -> tuple[FlightDynamics, Environment]:
     """Create and trim dynamics for PX4 bridge usage."""
     environment = Environment()
-    sim_config = SimulationConfig(dt=0.01)
+
+    if training_fidelity:
+        from .policy import TrainingFidelityConfig, apply_training_initial_state
+
+        tf = TrainingFidelityConfig.defaults()
+        sim_config = tf.simulation_config()
+        cruise_speed = tf.cruise_speed_mps
+        cruise_alt = 1000.0
+    else:
+        sim_config = SimulationConfig(dt=0.01)
+        cruise_speed = 25.0
+        cruise_alt = 100.0
+
     dynamics = FlightDynamics(aircraft, environment, sim_config)
 
+    if training_fidelity:
+        apply_training_initial_state(dynamics, seed)
+
     trim = compute_trim(
-        TrimCondition(airspeed=25.0, altitude=100.0),
+        TrimCondition(airspeed=cruise_speed, altitude=cruise_alt),
         aircraft,
         environment,
     )
@@ -514,7 +534,10 @@ def main() -> None:
         aircraft = AircraftConfig(name="Generic UAS")
         print("Using default aircraft config")
 
-    dynamics, environment = build_default_dynamics(aircraft)
+    dynamics, environment = build_default_dynamics(
+        aircraft,
+        training_fidelity=args.training_fidelity,
+    )
 
     intruder_manager = None
     if args.enable_intruders:
