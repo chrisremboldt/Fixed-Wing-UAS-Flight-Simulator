@@ -18,7 +18,7 @@ from ..aircraft import AircraftConfig
 from ..dynamics import FlightDynamics
 from ..intruders import IntruderManager
 from ..px4_bridge import ControlInterventionPolicy
-from ..state import ControlInputs
+from ..state import AircraftState, ControlInputs
 from .actions import training_action_to_controls
 from .model_policy import ModelPolicy
 
@@ -33,6 +33,9 @@ class TrimAssistConfig:
     max_authority: float = 0.6
     hold_trim_throttle: bool = True
     min_throttle: float = 0.15
+    # When engaged authority is low, recover with PID holds instead of static trim.
+    use_recovery_autopilot: bool = True
+    authority_smoothing_s: float = 0.35
 
 
 def compute_threat_authority(
@@ -68,6 +71,100 @@ def compute_threat_authority(
     span = config.engage_distance_m - config.full_authority_distance_m
     t = (config.engage_distance_m - closest) / span
     return config.max_authority * t
+
+
+def _normalize_angle(angle: float) -> float:
+    while angle > math.pi:
+        angle -= 2 * math.pi
+    while angle < -math.pi:
+        angle += 2 * math.pi
+    return angle
+
+
+@dataclass
+class LevelRecoveryController:
+    """
+    Return toward trim + captured cruise targets after policy intervention.
+
+    Uses trim deflections as feedforward with capped attitude feedback and
+    per-step slew limits so disengagement does not slam the surfaces.
+    """
+
+    trim_controls: ControlInputs
+    target_heading: float = 0.0
+    target_altitude: float = 1000.0
+    pitch_kp: float = 0.55
+    pitch_kd: float = 0.22
+    roll_kp: float = 0.75
+    roll_kd: float = 0.22
+    yaw_kp: float = 0.35
+    altitude_kp: float = 0.004
+    max_surface_correction: float = 0.10
+    max_slew_per_step: float = 0.025
+    _last_controls: Optional[ControlInputs] = None
+
+    def reset(self) -> None:
+        self._last_controls = None
+
+    def update(self, state: AircraftState) -> ControlInputs:
+        heading_error = _normalize_angle(self.target_heading - state.psi)
+        altitude_error = self.target_altitude - state.altitude
+
+        pitch_corr = np.clip(
+            self.pitch_kp * (-state.theta) + self.pitch_kd * (-state.q),
+            -self.max_surface_correction,
+            self.max_surface_correction,
+        )
+        roll_corr = np.clip(
+            self.roll_kp * (-state.phi) + self.roll_kd * (-state.p),
+            -self.max_surface_correction,
+            self.max_surface_correction,
+        )
+        yaw_corr = np.clip(
+            self.yaw_kp * heading_error,
+            -self.max_surface_correction,
+            self.max_surface_correction,
+        )
+        alt_corr = np.clip(
+            self.altitude_kp * altitude_error,
+            -0.05,
+            0.05,
+        )
+
+        target = ControlInputs(
+            elevator=float(np.clip(
+                self.trim_controls.elevator + pitch_corr + alt_corr, -0.35, 0.35,
+            )),
+            aileron=float(np.clip(
+                self.trim_controls.aileron + roll_corr + yaw_corr, -0.35, 0.35,
+            )),
+            rudder=float(np.clip(
+                self.trim_controls.rudder + 0.10 * roll_corr - 0.15 * state.r,
+                -0.35,
+                0.35,
+            )),
+            throttle=self.trim_controls.throttle,
+        )
+
+        if self._last_controls is None:
+            self._last_controls = target
+            return target
+
+        slew = self.max_slew_per_step
+        blended = ControlInputs(
+            elevator=self._last_controls.elevator + np.clip(
+                target.elevator - self._last_controls.elevator, -slew, slew,
+            ),
+            aileron=self._last_controls.aileron + np.clip(
+                target.aileron - self._last_controls.aileron, -slew, slew,
+            ),
+            rudder=self._last_controls.rudder + np.clip(
+                target.rudder - self._last_controls.rudder, -slew, slew,
+            ),
+            throttle=target.throttle,
+        )
+        self._last_controls = blended
+        return blended
 
 
 def blend_trim_and_policy(
@@ -108,10 +205,19 @@ class TrimAssistedModelPolicy:
         model_policy: ModelPolicy,
         trim_controls: ControlInputs,
         config: Optional[TrimAssistConfig] = None,
+        *,
+        recovery_state: Optional[AircraftState] = None,
     ):
         self.model_policy = model_policy
         self.trim_controls = trim_controls
         self.config = config or TrimAssistConfig()
+        self.recovery = LevelRecoveryController(
+            trim_controls=trim_controls,
+            target_heading=recovery_state.psi if recovery_state else 0.0,
+            target_altitude=recovery_state.altitude if recovery_state else 1000.0,
+        )
+        self._smoothed_authority = 0.0
+        self._last_authority_time: Optional[float] = None
 
     @classmethod
     def from_checkpoint(
@@ -124,6 +230,7 @@ class TrimAssistedModelPolicy:
         throttle_mode: str = 'symmetric',
         render_device: str = 'cpu',
         surface_scale: float = 1.0,
+        recovery_state: Optional[AircraftState] = None,
     ) -> 'TrimAssistedModelPolicy':
         return cls(
             ModelPolicy(
@@ -137,16 +244,39 @@ class TrimAssistedModelPolicy:
             ),
             trim_controls,
             config=config,
+            recovery_state=recovery_state,
         )
+
+    @property
+    def smoothed_authority(self) -> float:
+        return self._smoothed_authority
+
+    def _smooth_authority(self, raw_authority: float, sim_time: float) -> float:
+        if self._last_authority_time is None:
+            self._smoothed_authority = raw_authority
+        else:
+            dt = max(sim_time - self._last_authority_time, 0.0)
+            tau = max(self.config.authority_smoothing_s, 1e-3)
+            alpha = 1.0 - math.exp(-dt / tau)
+            self._smoothed_authority += alpha * (raw_authority - self._smoothed_authority)
+        self._last_authority_time = sim_time
+        return self._smoothed_authority
+
+    def _baseline_controls(self, dynamics: FlightDynamics) -> ControlInputs:
+        if not self.config.use_recovery_autopilot:
+            return self.trim_controls
+        return self.recovery.update(dynamics.state)
 
     def compute_controls(
         self,
         dynamics: FlightDynamics,
         intruder_manager: Optional[IntruderManager],
     ) -> ControlInputs:
-        authority = compute_threat_authority(dynamics, intruder_manager, self.config)
-        if authority <= 0.0:
-            return self.trim_controls
+        raw_authority = compute_threat_authority(dynamics, intruder_manager, self.config)
+        authority = self._smooth_authority(raw_authority, dynamics.state.time)
+        baseline = self._baseline_controls(dynamics)
+        if authority <= 1e-6:
+            return baseline
 
         action = self.model_policy.predict_action(dynamics, intruder_manager)
         policy_controls = training_action_to_controls(
@@ -156,7 +286,7 @@ class TrimAssistedModelPolicy:
             surface_scale=self.model_policy.surface_scale,
         )
         return blend_trim_and_policy(
-            self.trim_controls,
+            baseline,
             policy_controls,
             authority,
             hold_trim_throttle=self.config.hold_trim_throttle,

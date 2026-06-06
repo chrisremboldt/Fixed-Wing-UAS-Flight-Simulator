@@ -225,12 +225,18 @@ def _setup_episode(
         else:
             dynamics.reset()
 
-    intruder_config = IntruderConfig(
-        spawn_rate=config.spawn_rate,
-        max_intruders=config.max_intruders,
-        spawn_distance_min=300.0,
-        spawn_distance_max=1200.0,
-    )
+    if config.training_fidelity:
+        intruder_config = TrainingFidelityConfig.defaults().intruder_config(
+            spawn_rate=config.spawn_rate,
+            max_intruders=config.max_intruders,
+        )
+    else:
+        intruder_config = IntruderConfig(
+            spawn_rate=config.spawn_rate,
+            max_intruders=config.max_intruders,
+            spawn_distance_min=300.0,
+            spawn_distance_max=1200.0,
+        )
     if config.scenario is not None:
         intruder_config = config.scenario.apply_intruder_config(intruder_config)
 
@@ -275,6 +281,7 @@ def _setup_episode(
             throttle_mode=config.throttle_mode,
             render_device=config.render_device,
             surface_scale=config.surface_scale,
+            recovery_state=dynamics.state,
         )
 
         def get_controls() -> ControlInputs:
@@ -303,6 +310,8 @@ def run_episode(
             dynamics.state,
             config.scenario.fixed_intruders,
         )
+    elif config.training_fidelity:
+        spawn_count += intruder_manager.spawn_initial_intruders(dynamics.state)
 
     steps = int(config.duration / config.dt)
     min_dist_overall = float('inf')

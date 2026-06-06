@@ -105,12 +105,14 @@ class UASDAAEnv:
         if not self._tf and trim.success:
             self._dynamics.reset(trim.state)
 
-        intruder_config = IntruderConfig(
-            spawn_rate=self._tf.spawn_rate if self._tf else 0.2,
-            max_intruders=self._tf.max_intruders if self._tf else 5,
-        )
+        if self._tf:
+            intruder_config = self._tf.intruder_config()
+        else:
+            intruder_config = IntruderConfig(spawn_rate=0.2, max_intruders=5)
         self._intruders = IntruderManager(intruder_config, self._environment)
         self._intruders.random.seed(self._episode_seed)
+        if self._tf:
+            self._intruders.spawn_initial_intruders(self._dynamics.state)
         self._step_count = 0
 
         obs = self._build_obs()

@@ -43,8 +43,18 @@ class IntruderConfig:
     max_intruders: int = 5   # Maximum number of simultaneous intruders
     spawn_distance_min: float = 500.0  # Minimum spawn distance (m)
     spawn_distance_max: float = 2000.0  # Maximum spawn distance (m)
-    spawn_altitude_min: float = 50.0   # Minimum spawn altitude (m)
-    spawn_altitude_max: float = 300.0  # Maximum spawn altitude (m)
+    spawn_altitude_min: float = 50.0   # Minimum spawn altitude (m), absolute mode
+    spawn_altitude_max: float = 300.0  # Maximum spawn altitude (m), absolute mode
+    # When True, altitude is sampled relative to ownship (training env pattern).
+    spawn_altitude_relative_to_ownship: bool = False
+    spawn_altitude_offset_std_m: float = 200.0
+    spawn_altitude_abs_min_m: float = 300.0
+    spawn_altitude_abs_max_m: float = 3000.0
+    # Adversarial placement: bias spawns into ownship forward cone and initial burst.
+    initial_spawn_count: int = 0
+    spawn_forward_fraction: float = 0.0  # 1.0 = always in forward cone
+    spawn_forward_cone_deg: float = 55.0  # half-angle each side of ownship heading
+    spawn_heading_towards_ownship_probability: float = 0.0
 
     # Flight parameters
     cruise_speed: float = 35.0  # m/s (increased for faster movement)
@@ -111,6 +121,16 @@ class IntruderManager:
         # Probabilistic spawning based on spawn rate
         spawn_probability = 1.0 - np.exp(-self.config.spawn_rate * dt)
         return self.random.random() < spawn_probability
+
+    def spawn_initial_intruders(self, ownship_state: AircraftState) -> int:
+        """Spawn a fixed number of intruders at episode start."""
+        spawned = 0
+        for _ in range(self.config.initial_spawn_count):
+            if len(self.intruders) >= self.config.max_intruders:
+                break
+            self.spawn_intruder(ownship_state)
+            spawned += 1
+        return spawned
 
     def spawn_intruder(self, ownship_state: AircraftState) -> IntruderState:
         """Create a new intruder aircraft."""
@@ -208,18 +228,38 @@ class IntruderManager:
     def _generate_spawn_position(self, ownship_state: AircraftState) -> np.ndarray:
         """Generate a random spawn position around the ownship."""
 
-        # Random distance and angle
         distance = self.random.uniform(self.config.spawn_distance_min, self.config.spawn_distance_max)
-        angle = self.random.uniform(0, 2 * np.pi)
+        angle = self._sample_spawn_bearing(ownship_state.psi)
 
         # Position in horizontal plane around ownship
         spawn_x = ownship_state.p_north + distance * np.cos(angle)
         spawn_y = ownship_state.p_east + distance * np.sin(angle)
 
-        # Random altitude within limits
-        spawn_z = -self.random.uniform(self.config.spawn_altitude_min, self.config.spawn_altitude_max)
+        if self.config.spawn_altitude_relative_to_ownship:
+            altitude_offset = self.random.gauss(
+                0.0, self.config.spawn_altitude_offset_std_m,
+            )
+            spawn_z = ownship_state.position[2] + altitude_offset
+            alt_m = -spawn_z
+            alt_m = max(
+                self.config.spawn_altitude_abs_min_m,
+                min(self.config.spawn_altitude_abs_max_m, alt_m),
+            )
+            spawn_z = -alt_m
+        else:
+            spawn_z = -self.random.uniform(
+                self.config.spawn_altitude_min,
+                self.config.spawn_altitude_max,
+            )
 
         return np.array([spawn_x, spawn_y, spawn_z])
+
+    def _sample_spawn_bearing(self, ownship_heading: float) -> float:
+        """Sample intruder bearing; optionally bias into the ownship forward sector."""
+        if self.random.random() < self.config.spawn_forward_fraction:
+            half_cone = np.radians(self.config.spawn_forward_cone_deg)
+            return ownship_heading + self.random.uniform(-half_cone, half_cone)
+        return self.random.uniform(0, 2 * np.pi)
 
     def _create_intruder_aircraft(self) -> AircraftConfig:
         """Create a simplified aircraft config for intruders."""
@@ -236,10 +276,14 @@ class IntruderManager:
         speed = self.config.cruise_speed + self.random.uniform(-self.config.speed_variation, self.config.speed_variation)
         speed = max(20.0, min(50.0, speed))  # Clamp to reasonable limits (increased for faster intruders)
 
-        # Random heading (biased towards crossing ownship path)
         ownship_heading = ownship_state.psi
-        heading_variation = self.random.uniform(-np.pi/2, np.pi/2)
-        heading = ownship_heading + heading_variation
+        if self.random.random() < self.config.spawn_heading_towards_ownship_probability:
+            rel_n = ownship_state.p_north - spawn_pos[0]
+            rel_e = ownship_state.p_east - spawn_pos[1]
+            heading = np.arctan2(rel_e, rel_n)
+            heading += self.random.uniform(-np.pi / 4, np.pi / 4)
+        else:
+            heading = ownship_heading + self.random.uniform(-np.pi / 2, np.pi / 2)
 
         # Level attitude; forward speed is along body +X
         quaternion = Quaternion.from_euler(0.0, 0.0, heading)

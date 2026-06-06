@@ -84,6 +84,16 @@ class ScenarioConfig:
             behavior_distribution=base.behavior_distribution,
             min_lifetime=base.min_lifetime,
             max_lifetime=base.max_lifetime,
+            spawn_altitude_min=base.spawn_altitude_min,
+            spawn_altitude_max=base.spawn_altitude_max,
+            spawn_altitude_relative_to_ownship=base.spawn_altitude_relative_to_ownship,
+            spawn_altitude_offset_std_m=base.spawn_altitude_offset_std_m,
+            spawn_altitude_abs_min_m=base.spawn_altitude_abs_min_m,
+            spawn_altitude_abs_max_m=base.spawn_altitude_abs_max_m,
+            initial_spawn_count=base.initial_spawn_count,
+            spawn_forward_fraction=base.spawn_forward_fraction,
+            spawn_forward_cone_deg=base.spawn_forward_cone_deg,
+            spawn_heading_towards_ownship_probability=base.spawn_heading_towards_ownship_probability,
         )
 
 

@@ -12,8 +12,8 @@ class TrainingFidelityConfig:
     dt: float = 0.02
     img_size: int = 128
     fov_deg: float = 90.0
-    max_intruders: int = 5
-    spawn_rate: float = 0.2
+    max_intruders: int = 8
+    spawn_rate: float = 0.5
     renderer_backend: str = 'training'  # auto | training | gpu | legacy
     throttle_mode: str = 'clamp'  # warp clamps throttle to [0, 1]
     policy_device: str = 'cpu'
@@ -46,3 +46,35 @@ class TrainingFidelityConfig:
     @property
     def episode_duration_s(self) -> float:
         return self.max_episode_steps * self.dt
+
+    def intruder_config(self, **overrides) -> 'IntruderConfig':
+        """Adversarial intruder spawns for training-fidelity eval and viz."""
+        from ..intruders import IntruderBehavior, IntruderConfig
+
+        base = IntruderConfig(
+            spawn_rate=self.spawn_rate,
+            max_intruders=self.max_intruders,
+            spawn_distance_min=350.0,
+            spawn_distance_max=900.0,
+            spawn_altitude_relative_to_ownship=True,
+            spawn_altitude_offset_std_m=150.0,
+            spawn_altitude_abs_min_m=300.0,
+            spawn_altitude_abs_max_m=3000.0,
+            initial_spawn_count=3,
+            spawn_forward_fraction=0.75,
+            spawn_forward_cone_deg=55.0,
+            spawn_heading_towards_ownship_probability=0.85,
+            cruise_speed=40.0,
+            speed_variation=10.0,
+            behavior_distribution={
+                IntruderBehavior.COOPERATIVE: 0.25,
+                IntruderBehavior.NONCOOPERATIVE: 0.35,
+                IntruderBehavior.AGGRESSIVE: 0.40,
+            },
+            min_lifetime=45.0,
+            max_lifetime=150.0,
+        )
+        if not overrides:
+            return base
+        fields = {**base.__dict__, **overrides}
+        return IntruderConfig(**fields)

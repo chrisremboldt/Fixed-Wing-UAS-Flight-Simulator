@@ -115,6 +115,7 @@ class InteractivePolicyController:
                 throttle_mode=tf.throttle_mode if config.training_fidelity else 'symmetric',
                 render_device=config.render_device,
                 surface_scale=config.surface_scale,
+                recovery_state=self.dynamics.state,
             )
             self._policy = self._trim_assisted.model_policy
             self._get_controls = self._controls_trim_assisted
@@ -158,11 +159,7 @@ class InteractivePolicyController:
 
         authority = 1.0
         if self._trim_assisted is not None:
-            authority = compute_threat_authority(
-                dynamics,
-                intruder_manager,
-                self._trim_assisted.config,
-            )
+            authority = self._trim_assisted.smoothed_authority
 
         self._step_count += 1
         thumbnail_b64 = self._last_thumbnail_b64
@@ -213,14 +210,19 @@ def build_interactive_policy_setup(
     intruder_manager = None
     if enable_intruders:
         tf = TrainingFidelityConfig.defaults()
-        intruder_config = IntruderConfig(
-            spawn_rate=tf.spawn_rate if config.training_fidelity else 0.2,
-            max_intruders=tf.max_intruders if config.training_fidelity else 5,
-            spawn_distance_min=300.0,
-            spawn_distance_max=1200.0,
-        )
+        if config.training_fidelity:
+            intruder_config = tf.intruder_config()
+        else:
+            intruder_config = IntruderConfig(
+                spawn_rate=0.2,
+                max_intruders=5,
+                spawn_distance_min=300.0,
+                spawn_distance_max=1200.0,
+            )
         intruder_manager = IntruderManager(intruder_config, environment)
         intruder_manager.random.seed(seed)
+        if config.training_fidelity:
+            intruder_manager.spawn_initial_intruders(dynamics.state)
 
     def controls_provider(dyn: FlightDynamics, mgr: Optional[IntruderManager]):
         return controller.step(dyn, mgr)
