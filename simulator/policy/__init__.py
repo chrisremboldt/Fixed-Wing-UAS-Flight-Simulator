@@ -9,10 +9,12 @@ from .evaluation import (
     BatchEvalResult,
     EpisodeResult,
     EvalConfig,
+    export_batch_results,
     format_batch_summary,
     run_batch_evaluation,
     run_episode,
 )
+from .scenarios import ScenarioConfig, resolve_scenario_path
 from .training_config import TrainingFidelityConfig
 from .training_init import (
     TRAINING_CRUISE_SPEED_MPS,
@@ -34,8 +36,11 @@ __all__ = [
     'EpisodeResult',
     'EvalConfig',
     'format_batch_summary',
+    'export_batch_results',
     'run_batch_evaluation',
     'run_episode',
+    'ScenarioConfig',
+    'resolve_scenario_path',
     'TrainingFidelityConfig',
     'TRAINING_CRUISE_SPEED_MPS',
     'apply_training_initial_state',

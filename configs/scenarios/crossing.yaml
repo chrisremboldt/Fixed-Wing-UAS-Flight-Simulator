@@ -1,0 +1,15 @@
+name: crossing
+description: Intruder crosses perpendicular from the right at 600 m
+seed: 43
+intruders:
+  spawn_rate: 0.0
+  max_intruders: 1
+  fixed:
+    - intruder_type: crossing
+      behavior: cooperative
+      distance_m: 600
+      bearing_deg: 90
+      altitude_offset_m: -50
+      speed_mps: 38
+      heading_offset_deg: -90
+      lifetime_s: 120

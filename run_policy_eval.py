@@ -14,8 +14,11 @@ from pathlib import Path
 from simulator.main import create_default_aircraft
 from simulator.policy import (
     EvalConfig,
+    ScenarioConfig,
     TrainingFidelityConfig,
+    export_batch_results,
     format_batch_summary,
+    resolve_scenario_path,
     run_batch_evaluation,
     run_episode,
 )
@@ -24,6 +27,10 @@ NMAC_DISTANCE_M = 152.4
 
 
 def build_eval_config(args: argparse.Namespace) -> EvalConfig:
+    scenario = None
+    if args.scenario:
+        scenario = ScenarioConfig.from_yaml(resolve_scenario_path(args.scenario))
+
     if args.training_fidelity:
         tf = TrainingFidelityConfig.defaults()
         duration = args.duration if args.duration is not None else tf.episode_duration_s
@@ -46,6 +53,7 @@ def build_eval_config(args: argparse.Namespace) -> EvalConfig:
             policy_throttle=args.policy_throttle,
             surface_scale=tf.surface_scale,
             cruise_throttle_floor=tf.cruise_throttle_floor and not args.no_throttle_floor,
+            scenario=scenario,
         )
 
     return EvalConfig(
@@ -66,6 +74,7 @@ def build_eval_config(args: argparse.Namespace) -> EvalConfig:
         max_authority=args.max_authority,
         policy_throttle=args.policy_throttle,
         cruise_throttle_floor=False,
+        scenario=scenario,
     )
 
 
@@ -76,6 +85,8 @@ def print_header(config: EvalConfig, args: argparse.Namespace) -> None:
     print(f'Model: {config.policy_path}')
     print(f'Duration: {config.duration}s | dt={config.dt}s | Seed: {config.seed}')
     print(f'Policy device: {config.device} | Renderer: {config.renderer}')
+    if config.scenario:
+        print(f'Scenario: {config.scenario.name}')
     if args.episodes > 1:
         print(f'Episodes: {args.episodes}')
     if config.training_fidelity and config.full_policy:
@@ -97,8 +108,10 @@ def print_episode_result(result) -> None:
     print(f'  Final airspeed: {result.final_airspeed_mps:.1f} m/s')
     print(f'  Intruders spawned: {result.intruders_spawned}')
     print(f'  Min separation: {result.min_separation_m:.1f} m')
+    print(f'  Time to CPA: {result.time_to_cpa_s:.1f} s')
+    print(f'  Action saturation: {result.action_saturation_rate * 100:.1f}%')
     print(f'  NMAC proximity steps (<{NMAC_DISTANCE_M:.0f} m): {result.nmac_proximity_steps}')
-    print(f'  Crashed: {result.crashed}')
+    print(f'  Failure reason: {result.failure_reason}')
     print(f'  Success: {result.success}')
 
 
@@ -111,10 +124,17 @@ def run_evaluation(args: argparse.Namespace) -> int:
     if args.episodes > 1:
         batch = run_batch_evaluation(aircraft, config, args.episodes, base_seed=config.seed)
         print(format_batch_summary(batch))
+        if args.output:
+            export_batch_results(batch, args.output)
+            print(f'\nWrote results to {args.output}')
         return 0
 
     result = run_episode(aircraft, config, config.seed)
     print_episode_result(result)
+    if args.output:
+        from simulator.policy.evaluation import BatchEvalResult
+        export_batch_results(BatchEvalResult(episodes=[result], scenario_name=result.scenario_name), args.output)
+        print(f'\nWrote results to {args.output}')
     return 0
 
 
@@ -162,6 +182,18 @@ def main() -> None:
         '--training-fidelity',
         action='store_true',
         help='Match scratch_built_daa presets (20s episodes, 50Hz, training init/renderer)',
+    )
+    parser.add_argument(
+        '--scenario',
+        type=str,
+        default=None,
+        help='Scenario YAML name or path (e.g. head_on or configs/scenarios/crossing.yaml)',
+    )
+    parser.add_argument(
+        '--output',
+        type=str,
+        default=None,
+        help='Write per-episode JSON results to this path',
     )
     parser.add_argument(
         '--renderer',

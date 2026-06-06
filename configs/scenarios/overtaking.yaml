@@ -1,0 +1,15 @@
+name: overtaking
+description: Faster intruder overtakes from behind at 500 m
+seed: 44
+intruders:
+  spawn_rate: 0.0
+  max_intruders: 1
+  fixed:
+    - intruder_type: cruise
+      behavior: cooperative
+      distance_m: 500
+      bearing_deg: 180
+      altitude_offset_m: 20
+      speed_mps: 45
+      heading_offset_deg: 0
+      lifetime_s: 120

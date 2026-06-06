@@ -24,9 +24,24 @@ class TrainingFidelityConfig:
     surface_scale: float = 1.5
     cruise_throttle_floor: bool = True
 
+    # Warp training physics has no Vne limit or g-load structural failure
+    disable_overspeed_crash: bool = True
+    disable_structural_g_crash: bool = True
+
     @classmethod
     def defaults(cls) -> 'TrainingFidelityConfig':
         return cls()
+
+    def simulation_config(self, dt: float | None = None) -> 'SimulationConfig':
+        """Build SimulationConfig with training-fidelity crash rules."""
+        from ..dynamics import SimulationConfig
+
+        step = dt if dt is not None else self.dt
+        return SimulationConfig(
+            dt=step,
+            disable_overspeed_crash=self.disable_overspeed_crash,
+            disable_structural_g_crash=self.disable_structural_g_crash,
+        )
 
     @property
     def episode_duration_s(self) -> float:

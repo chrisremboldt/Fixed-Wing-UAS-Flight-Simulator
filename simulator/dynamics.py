@@ -86,6 +86,10 @@ class SimulationConfig:
     stall_duration_limit: float = 5.0  # Seconds in stall before crash
     terrain_warning_altitude: float = 50.0  # Altitude for terrain warning
 
+    # Training-fidelity eval: Warp training env has no Vne structural limit
+    disable_overspeed_crash: bool = False
+    disable_structural_g_crash: bool = False
+
 
 def state_derivative(
     state: AircraftState,
@@ -378,32 +382,34 @@ class FlightDynamics:
         
         self.crash_state.impact_g_force = n_load
         
-        if n_load > self.sim_config.max_g_load:
-            self.crash_state.crashed = True
-            self.crash_state.crash_type = CrashType.STRUCTURAL_FAILURE
-            self.crash_state.crash_time = self.state.time
-            self.crash_state.crash_message = f"Structural failure: {n_load:.1f}g exceeded {self.sim_config.max_g_load}g limit"
-            return
-        
-        if n_load < self.sim_config.max_negative_g:
-            self.crash_state.crashed = True
-            self.crash_state.crash_type = CrashType.STRUCTURAL_FAILURE
-            self.crash_state.crash_time = self.state.time
-            self.crash_state.crash_message = f"Structural failure: {n_load:.1f}g exceeded {self.sim_config.max_negative_g}g negative limit"
-            return
-        
+        if not self.sim_config.disable_structural_g_crash:
+            if n_load > self.sim_config.max_g_load:
+                self.crash_state.crashed = True
+                self.crash_state.crash_type = CrashType.STRUCTURAL_FAILURE
+                self.crash_state.crash_time = self.state.time
+                self.crash_state.crash_message = f"Structural failure: {n_load:.1f}g exceeded {self.sim_config.max_g_load}g limit"
+                return
+
+            if n_load < self.sim_config.max_negative_g:
+                self.crash_state.crashed = True
+                self.crash_state.crash_type = CrashType.STRUCTURAL_FAILURE
+                self.crash_state.crash_time = self.state.time
+                self.crash_state.crash_message = f"Structural failure: {n_load:.1f}g exceeded {self.sim_config.max_negative_g}g negative limit"
+                return
+
         # === OVERSPEED ===
         airspeed = self.forces_moments.airspeed
         vne = self.aircraft.max_airspeed
-        
+
         self.crash_state.overspeed_warning = airspeed > vne * 0.9
-        
-        if airspeed > vne * 1.1:  # 10% over Vne = structural failure
-            self.crash_state.crashed = True
-            self.crash_state.crash_type = CrashType.OVERSPEED
-            self.crash_state.crash_time = self.state.time
-            self.crash_state.crash_message = f"Overspeed structural failure: {airspeed:.1f} m/s > Vne {vne:.1f} m/s"
-            return
+
+        if not self.sim_config.disable_overspeed_crash:
+            if airspeed > vne * 1.1:  # 10% over Vne = structural failure
+                self.crash_state.crashed = True
+                self.crash_state.crash_type = CrashType.OVERSPEED
+                self.crash_state.crash_time = self.state.time
+                self.crash_state.crash_message = f"Overspeed structural failure: {airspeed:.1f} m/s > Vne {vne:.1f} m/s"
+                return
         
         # === STALL DETECTION ===
         alpha_deg = np.degrees(self.forces_moments.alpha)

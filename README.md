@@ -92,8 +92,12 @@ python run_policy_eval.py --policy final_model.pt --training-fidelity --seed 42
 # Batch test (mirrors evaluate_model.py metrics)
 python run_policy_eval.py --policy final_model.pt --training-fidelity --episodes 10 --seed 42
 
-# Full closed-loop (no trim assist; needs CUDA GPU renderer + Warp physics for stability)
-python run_policy_eval.py --policy final_model.pt --training-fidelity --full-policy --duration 30
+# Full closed-loop (training-fidelity disables Vne/g-limit crashes like Warp physics)
+python run_policy_eval.py --policy final_model.pt --training-fidelity --full-policy --duration 20
+
+# Deterministic scenario regression (configs/scenarios/*.yaml)
+python run_policy_eval.py --training-fidelity --scenario head_on --seed 42
+python run_policy_eval.py --training-fidelity --scenario crossing --episodes 20 --output results.json
 
 # Optional GPU renderer on CUDA host: pip install -r requirements-training.txt
 python run_policy_eval.py --policy final_model.pt --training-fidelity --renderer gpu --render-device cuda:0
@@ -105,7 +109,11 @@ python -m simulator.main --policy final_model.pt --duration 120
 python run_px4_bridge.py --enable-intruders --policy final_model.pt
 ```
 
-**Training fidelity stack:** `TrainingPixelRenderer` (CPU mesh + sky parity), optional `NvdiffrastPolicyRenderer`, `TrainingFidelityConfig`, and training-matched initial state. Trim assist holds cruise throttle so DAA maneuvers are testable before full physics transfer.
+**Training fidelity stack:** `TrainingPixelRenderer` (CPU mesh + sky parity), optional `NvdiffrastPolicyRenderer`, `TrainingFidelityConfig` (disables Vne/g-limit crashes for Warp parity), and training-matched initial state. Trim assist holds cruise throttle so DAA maneuvers are testable before full physics transfer.
+
+**Scenario YAMLs:** `configs/scenarios/` defines fixed head-on, crossing, overtaking, and multi-intruder cases. Same scenario + seed yields identical spawn geometry.
+
+**Batch export:** `--output results.json` writes per-episode metrics (failure reason, time-to-CPA, action saturation) for CI trend tracking.
 
 **Remaining gap vs training:** Warp simplified aerodynamics and nvdiffrast GPU pixels. Native eval: `drones/scratch_built_daa/evaluate_model.py` (CUDA + nvdiffrast).
 

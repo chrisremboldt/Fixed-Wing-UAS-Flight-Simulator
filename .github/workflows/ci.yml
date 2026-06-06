@@ -1,0 +1,50 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run unit tests
+        run: pytest tests/ -q --tb=short
+
+      - name: Policy eval smoke test
+        run: |
+          python run_policy_eval.py \
+            --training-fidelity \
+            --episodes 3 \
+            --duration 5 \
+            --seed 42 \
+            --output /tmp/policy_smoke.json
+
+      - name: Scenario smoke test
+        run: |
+          python run_policy_eval.py \
+            --training-fidelity \
+            --scenario head_on \
+            --duration 10 \
+            --seed 42
+
+      - name: Full-policy training-fidelity smoke
+        run: |
+          python run_policy_eval.py \
+            --training-fidelity \
+            --full-policy \
+            --duration 10 \
+            --seed 42

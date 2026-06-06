@@ -1,0 +1,23 @@
+name: multi_intruder
+description: Head-on plus crossing threat for multi-target DAA
+seed: 45
+intruders:
+  spawn_rate: 0.0
+  max_intruders: 2
+  fixed:
+    - intruder_type: cruise
+      behavior: cooperative
+      distance_m: 900
+      bearing_deg: 0
+      altitude_offset_m: 0
+      speed_mps: 40
+      heading_offset_deg: 180
+      lifetime_s: 120
+    - intruder_type: crossing
+      behavior: noncooperative
+      distance_m: 700
+      bearing_deg: -60
+      altitude_offset_m: 30
+      speed_mps: 36
+      heading_offset_deg: 120
+      lifetime_s: 120
