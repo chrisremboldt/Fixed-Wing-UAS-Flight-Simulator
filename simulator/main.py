@@ -259,63 +259,41 @@ def run_interactive_simulation(aircraft: AircraftConfig, enable_intruders: bool 
 def run_policy_simulation(
     aircraft: AircraftConfig,
     policy_path: str,
-    duration: float = 120.0,
+    duration: float | None = None,
     device: str = 'cpu',
     enable_intruders: bool = True,
     seed: int = 42,
+    training_fidelity: bool = False,
 ):
     """Run headless simulation with trained DAA policy controlling the aircraft."""
-    from .policy import TrimAssistedModelPolicy
+    from .policy import EvalConfig, TrainingFidelityConfig, run_episode
 
-    environment = Environment()
-    sim_config = SimulationConfig(dt=0.01)
-    dynamics = FlightDynamics(aircraft, environment, sim_config)
-
-    trim_result = compute_trim(
-        TrimCondition(airspeed=25.0, altitude=100.0),
-        aircraft,
-        environment,
-    )
-    if not trim_result.success:
-        print('Warning: trim failed; policy sim may be unstable')
-    dynamics.reset(trim_result.state if trim_result.success else None)
-
-    intruder_manager = None
-    if enable_intruders:
-        intruder_config = IntruderConfig(
-            spawn_rate=0.15,
-            max_intruders=5,
-            spawn_distance_min=300.0,
-            spawn_distance_max=1200.0,
+    if training_fidelity:
+        tf = TrainingFidelityConfig.defaults()
+        config = EvalConfig.from_training_defaults(
+            policy_path,
+            duration=duration or tf.episode_duration_s,
+            seed=seed,
+            device=device,
         )
-        intruder_manager = IntruderManager(intruder_config, environment)
-        intruder_manager.random.seed(seed)
+    else:
+        config = EvalConfig(
+            policy_path=policy_path,
+            duration=duration or 120.0,
+            dt=0.01,
+            seed=seed,
+            device=device,
+            training_fidelity=False,
+            spawn_rate=0.15 if enable_intruders else 0.0,
+        )
 
-    policy = TrimAssistedModelPolicy.from_checkpoint(
-        policy_path,
-        trim_result.controls,
-        device=device,
-    )
-    steps = int(duration / sim_config.dt)
+    if not enable_intruders:
+        config.spawn_rate = 0.0
 
-    print(f'Running trim-assisted policy simulation for {duration}s ({steps} steps)...')
-    for _ in range(steps):
-        if intruder_manager and intruder_manager.should_spawn_intruder(sim_config.dt, dynamics.state):
-            intruder_manager.spawn_intruder(dynamics.state)
-
-        controls = policy.compute_controls(dynamics, intruder_manager)
-        dynamics.step(controls)
-
-        if intruder_manager:
-            intruder_manager.update_intruders(sim_config.dt, dynamics.state)
-
-        if dynamics.crash_state.crashed:
-            print(f'Crashed at t={dynamics.state.time:.1f}s')
-            break
-
-    airspeed = float(np.linalg.norm(dynamics.state.velocity_body))
-    print(f'Complete. t={dynamics.state.time:.1f}s alt={dynamics.state.altitude:.1f}m '
-          f'airspeed={airspeed:.1f}m/s')
+    print(f'Running policy simulation ({config.duration}s, dt={config.dt})...')
+    result = run_episode(aircraft, config, seed)
+    print(f'Complete. t={result.sim_time:.1f}s alt={result.final_altitude_m:.1f}m '
+          f'airspeed={result.final_airspeed_mps:.1f}m/s success={result.success}')
 
 
 def run_headless_simulation(
@@ -420,6 +398,11 @@ def main():
         default='cpu',
         help='Torch device for --policy mode (cpu, cuda, mps)'
     )
+    parser.add_argument(
+        '--training-fidelity',
+        action='store_true',
+        help='Use scratch_built_daa presets for --policy mode',
+    )
     
     args = parser.parse_args()
     
@@ -441,6 +424,7 @@ def main():
             duration=args.duration,
             device=args.device,
             enable_intruders=not args.no_intruders,
+            training_fidelity=args.training_fidelity,
         )
     elif args.headless:
         run_headless_simulation(aircraft, args.duration, args.output)

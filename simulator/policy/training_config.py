@@ -20,7 +20,14 @@ class TrainingFidelityConfig:
     use_trim_assist: bool = True  # hold cruise throttle unless --full-policy
     deterministic_policy: bool = True
     cruise_speed_mps: float = 40.0
+    max_episode_steps: int = 1000
+    surface_scale: float = 1.5
+    cruise_throttle_floor: bool = True
 
     @classmethod
     def defaults(cls) -> 'TrainingFidelityConfig':
         return cls()
+
+    @property
+    def episode_duration_s(self) -> float:
+        return self.max_episode_steps * self.dt

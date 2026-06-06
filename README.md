@@ -86,8 +86,11 @@ python -m pytest tests/test_policy.py -q
 # Headless closed-loop eval (trim-assisted, training-matched renderer)
 python run_policy_eval.py --policy final_model.pt --duration 120 --seed 42
 
-# Training fidelity: 50 Hz, training init (500–1500 m, 40 m/s), renderer, clamp throttle
-python run_policy_eval.py --policy final_model.pt --training-fidelity --duration 120 --seed 42
+# Training fidelity: 20s episodes (1000 steps @ 50Hz), training init, renderer
+python run_policy_eval.py --policy final_model.pt --training-fidelity --seed 42
+
+# Batch test (mirrors evaluate_model.py metrics)
+python run_policy_eval.py --policy final_model.pt --training-fidelity --episodes 10 --seed 42
 
 # Full closed-loop (no trim assist; needs CUDA GPU renderer + Warp physics for stability)
 python run_policy_eval.py --policy final_model.pt --training-fidelity --full-policy --duration 30

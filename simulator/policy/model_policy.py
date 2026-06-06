@@ -44,6 +44,8 @@ class ModelPolicy:
         renderer_backend: str = 'training',
         render_device: str = 'cpu',
         throttle_mode: str = 'symmetric',
+        surface_scale: float = 1.0,
+        cruise_throttle_floor: float | None = None,
     ):
         if not HAS_TORCH:
             raise ImportError('torch is required for ModelPolicy')
@@ -53,6 +55,8 @@ class ModelPolicy:
             render_device=render_device,
         )
         self.throttle_mode = throttle_mode
+        self.surface_scale = surface_scale
+        self.cruise_throttle_floor = cruise_throttle_floor
         self.device = torch.device(device)
         self.deterministic = deterministic
         self.control_mode = control_mode
@@ -83,7 +87,11 @@ class ModelPolicy:
         aircraft: AircraftConfig,
     ) -> ControlInputs:
         return training_action_to_controls(
-            action, aircraft, throttle_mode=self.throttle_mode,
+            action,
+            aircraft,
+            throttle_mode=self.throttle_mode,
+            surface_scale=self.surface_scale,
+            cruise_throttle_floor=self.cruise_throttle_floor,
         )
 
     def intervene(

@@ -19,6 +19,8 @@ def training_action_to_controls(
     aircraft: AircraftConfig,
     *,
     throttle_mode: str = 'symmetric',
+    surface_scale: float = 1.0,
+    cruise_throttle_floor: float | None = None,
 ) -> ControlInputs:
     """
     Convert tanh policy output to UAS sim ControlInputs.
@@ -35,19 +37,23 @@ def training_action_to_controls(
     else:
         throttle = float(np.clip((action[THROTTLE_IDX] + 1.0) / 2.0, 0.0, 1.0))
 
+    if cruise_throttle_floor is not None:
+        throttle = max(throttle, float(cruise_throttle_floor))
+
+    scale = float(surface_scale)
     return ControlInputs(
         elevator=float(np.clip(
-            action[ELEVATOR_IDX] * aircraft.max_elevator,
+            action[ELEVATOR_IDX] * aircraft.max_elevator * scale,
             -aircraft.max_elevator,
             aircraft.max_elevator,
         )),
         aileron=float(np.clip(
-            action[AILERON_IDX] * aircraft.max_aileron,
+            action[AILERON_IDX] * aircraft.max_aileron * scale,
             -aircraft.max_aileron,
             aircraft.max_aileron,
         )),
         rudder=float(np.clip(
-            action[RUDDER_IDX] * aircraft.max_rudder,
+            action[RUDDER_IDX] * aircraft.max_rudder * scale,
             -aircraft.max_rudder,
             aircraft.max_rudder,
         )),

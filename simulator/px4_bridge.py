@@ -491,6 +491,11 @@ def parse_args() -> argparse.Namespace:
         default="cpu",
         help="Torch device for --policy (cpu, cuda, mps)",
     )
+    parser.add_argument(
+        "--training-fidelity",
+        action="store_true",
+        help="Use scratch_built_daa presets for policy observations and trim",
+    )
 
     parser.add_argument("--reverse-aileron", action="store_true", help="Invert aileron sign")
     parser.add_argument("--reverse-elevator", action="store_true", help="Invert elevator sign")
@@ -519,20 +524,35 @@ def main() -> None:
 
     intervention_policy = None
     if args.policy:
-        from pathlib import Path
-        from .policy import TrimAssistedModelPolicy
+        from .policy import TrainingFidelityConfig, TrimAssistedModelPolicy
         from .trim import TrimCondition, compute_trim
 
-        trim = compute_trim(
-            TrimCondition(airspeed=25.0, altitude=100.0),
-            dynamics.aircraft,
-            environment,
-        )
-        intervention_policy = TrimAssistedModelPolicy.from_checkpoint(
-            args.policy,
-            trim.controls,
-            device=args.policy_device,
-        )
+        if args.training_fidelity:
+            tf = TrainingFidelityConfig.defaults()
+            trim = compute_trim(
+                TrimCondition(airspeed=tf.cruise_speed_mps, altitude=1000.0),
+                dynamics.aircraft,
+                environment,
+            )
+            intervention_policy = TrimAssistedModelPolicy.from_checkpoint(
+                args.policy,
+                trim.controls,
+                device=args.policy_device,
+                renderer_backend=tf.renderer_backend,
+                throttle_mode=tf.throttle_mode,
+                surface_scale=tf.surface_scale,
+            )
+        else:
+            trim = compute_trim(
+                TrimCondition(airspeed=25.0, altitude=100.0),
+                dynamics.aircraft,
+                environment,
+            )
+            intervention_policy = TrimAssistedModelPolicy.from_checkpoint(
+                args.policy,
+                trim.controls,
+                device=args.policy_device,
+            )
         print(f"TrimAssistedModelPolicy loaded from {args.policy} (device={args.policy_device})")
     elif args.simple_daa:
         intervention_policy = SimpleBearingAvoidancePolicy()

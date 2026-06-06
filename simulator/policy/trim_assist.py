@@ -123,6 +123,7 @@ class TrimAssistedModelPolicy:
         renderer_backend: str = 'training',
         throttle_mode: str = 'symmetric',
         render_device: str = 'cpu',
+        surface_scale: float = 1.0,
     ) -> 'TrimAssistedModelPolicy':
         return cls(
             ModelPolicy(
@@ -132,6 +133,7 @@ class TrimAssistedModelPolicy:
                 renderer_backend=renderer_backend,
                 render_device=render_device,
                 throttle_mode=throttle_mode,
+                surface_scale=surface_scale,
             ),
             trim_controls,
             config=config,
@@ -151,6 +153,7 @@ class TrimAssistedModelPolicy:
             action,
             dynamics.aircraft,
             throttle_mode=self.model_policy.throttle_mode,
+            surface_scale=self.model_policy.surface_scale,
         )
         return blend_trim_and_policy(
             self.trim_controls,

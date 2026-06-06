@@ -5,6 +5,14 @@ from .architecture import ImpalaCNN, PufferPolicy, load_policy_checkpoint
 from .model_policy import ModelPolicy
 from .observation import ObservationSpec, PixelObservationBuilder, BearingMapObservationBuilder
 from .rendering import CPUPixelRenderer, CameraConfig
+from .evaluation import (
+    BatchEvalResult,
+    EpisodeResult,
+    EvalConfig,
+    format_batch_summary,
+    run_batch_evaluation,
+    run_episode,
+)
 from .training_config import TrainingFidelityConfig
 from .training_init import (
     TRAINING_CRUISE_SPEED_MPS,
@@ -22,6 +30,12 @@ from .trim_assist import (
 __all__ = [
     'CameraConfig',
     'CPUPixelRenderer',
+    'BatchEvalResult',
+    'EpisodeResult',
+    'EvalConfig',
+    'format_batch_summary',
+    'run_batch_evaluation',
+    'run_episode',
     'TrainingFidelityConfig',
     'TRAINING_CRUISE_SPEED_MPS',
     'apply_training_initial_state',
